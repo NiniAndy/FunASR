@@ -1,10 +1,11 @@
 import logging
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
-class CTC(torch.nn.Module):
+class CTC(nn.Module):
     """CTC module.
 
     Args:
@@ -27,18 +28,23 @@ class CTC(torch.nn.Module):
         super().__init__()
         eprojs = encoder_output_size
         self.dropout_rate = dropout_rate
-        self.ctc_lo = torch.nn.Linear(eprojs, odim)
+        self.ctc_lo = nn.Linear(eprojs, odim)
         self.ctc_type = ctc_type
         self.ignore_nan_grad = ignore_nan_grad
 
         if self.ctc_type == "builtin":
-            self.ctc_loss = torch.nn.CTCLoss(reduction="none")
+            self.ctc_loss = nn.CTCLoss(reduction="none")
+
         elif self.ctc_type == "warpctc":
             import warpctc_pytorch as warp_ctc
-
             if ignore_nan_grad:
                 logging.warning("ignore_nan_grad option is not supported for warp_ctc")
             self.ctc_loss = warp_ctc.CTCLoss(size_average=True, reduce=reduce)
+
+        elif self.ctc_type == "wenetctc":
+            reduction_type = "sum" if reduce else "none"
+            self.ctc_loss = nn.CTCLoss(blank=0, reduction=reduction_type, zero_infinity=True)
+
         else:
             raise ValueError(f'ctc_type must be "builtin" or "warpctc": {self.ctc_type}')
 
@@ -57,24 +63,12 @@ class CTC(torch.nn.Module):
                 size = indices.long().sum()
                 if size == 0:
                     # Return as is
-                    logging.warning(
-                        "All samples in this mini-batch got nan grad."
-                        " Returning nan value instead of CTC loss"
-                    )
+                    logging.warning("All samples in this mini-batch got nan grad. Returning nan value instead of CTC loss")
                 elif size != th_pred.size(1):
-                    logging.warning(
-                        f"{th_pred.size(1) - size}/{th_pred.size(1)}"
-                        " samples got nan grad."
-                        " These were ignored for CTC loss."
-                    )
+                    logging.warning(f"{th_pred.size(1) - size}/{th_pred.size(1)} samples got nan grad. These were ignored for CTC loss.")
 
                     # Create mask for target
-                    target_mask = torch.full(
-                        [th_target.size(0)],
-                        1,
-                        dtype=torch.bool,
-                        device=th_target.device,
-                    )
+                    target_mask = torch.full([th_target.size(0)], 1, dtype=torch.bool,  device=th_target.device, )
                     s = 0
                     for ind, le in enumerate(th_olen):
                         if not indices[ind]:
@@ -82,12 +76,7 @@ class CTC(torch.nn.Module):
                         s += le
 
                     # Calc loss again using maksed data
-                    loss = self.ctc_loss(
-                        th_pred[:, indices, :],
-                        th_target[target_mask],
-                        th_ilen[indices],
-                        th_olen[indices],
-                    )
+                    loss = self.ctc_loss(th_pred[:, indices, :], th_target[target_mask], th_ilen[indices], th_olen[indices],)
             else:
                 size = th_pred.size(1)
 
@@ -114,13 +103,13 @@ class CTC(torch.nn.Module):
             return loss
 
         elif self.ctc_type == "gtnctc":
-            log_probs = torch.nn.functional.log_softmax(th_pred, dim=2)
+            log_probs = nn.functional.log_softmax(th_pred, dim=2)
             return self.ctc_loss(log_probs, th_target, th_ilen, 0, "none")
 
         else:
             raise NotImplementedError
 
-    def forward(self, hs_pad, hlens, ys_pad, ys_lens):
+    def forward(self, hs_pad, h_lens, ys_pad, ys_lens):
         """Calculate CTC loss.
 
         Args:
@@ -130,20 +119,28 @@ class CTC(torch.nn.Module):
             ys_lens: batch of lengths of character sequence (B)
         """
         # hs_pad: (B, L, NProj) -> ys_hat: (B, L, Nvocab)
-        ys_hat = self.ctc_lo(F.dropout(hs_pad, p=self.dropout_rate))
-
-        if self.ctc_type == "gtnctc":
-            # gtn expects list form for ys
-            ys_true = [y[y != -1] for y in ys_pad]  # parse padded ys
-        else:
+        if self.ctc_type == "wenetctc":
+            ys_hat = self.ctc_lo(F.dropout(hs_pad, p=self.dropout_rate))
             # ys_hat: (B, L, D) -> (L, B, D)
             ys_hat = ys_hat.transpose(0, 1)
-            # (B, L) -> (BxL,)
-            ys_true = torch.cat([ys_pad[i, :l] for i, l in enumerate(ys_lens)])
+            ys_hat = ys_hat.log_softmax(2)
+            loss = self.ctc_loss(ys_hat, ys_pad, h_lens, ys_lens)
+            # Batch-size average
+            loss = loss / ys_hat.size(1)
+            ys_hat = ys_hat.transpose(0, 1)
+        else:
+            ys_hat = self.ctc_lo(F.dropout(hs_pad, p=self.dropout_rate))
 
-        loss = self.loss_fn(ys_hat, ys_true, hlens, ys_lens).to(
-            device=hs_pad.device, dtype=hs_pad.dtype
-        )
+            if self.ctc_type == "gtnctc":
+                # gtn expects list form for ys
+                ys_true = [y[y != -1] for y in ys_pad]  # parse padded ys
+            else:
+                # ys_hat: (B, L, D) -> (L, B, D)
+                ys_hat = ys_hat.transpose(0, 1)
+                # (B, L) -> (BxL,)
+                ys_true = torch.cat([ys_pad[i, :l] for i, l in enumerate(ys_lens)])
+
+            loss = self.loss_fn(ys_hat, ys_true, h_lens, ys_lens).to(device=hs_pad.device, dtype=hs_pad.dtype)
 
         return loss
 

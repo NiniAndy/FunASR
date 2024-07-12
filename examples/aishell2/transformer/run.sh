@@ -14,21 +14,19 @@ stop_stage=5
 # feature configuration
 nj=32
 
-inference_device="cuda" #"cpu", "cuda:0", "cuda:1"
-inference_checkpoint="model.pt.avg10"
+inference_device="cuda" #"cpu"
+inference_checkpoint="model.pt"
 inference_scp="wav.scp"
 inference_batch_size=1
 
 # data
 #raw_data=/data/nas/zhuang/dataset/data_aishell
-raw_data=/data/nas/zhuang/dataset/data_aishell/
+raw_data=/data/nas/zhuang/dataset/data_aishell2/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="wenetctc_version"
+tag="IOS"
 workspace=`pwd`
-
-master_port=12345
 
 . utils/parse_options.sh || exit 1;
 
@@ -39,29 +37,22 @@ set -u
 set -o pipefail
 
 train_set=train
-valid_set=dev
-test_sets="dev test"
+valid_set=dev/IOS
+# test_sets="dev/IOS test/IOS dev/Android test/Android dev/MIC tesst/MIC"
+test_sets="dev/IOS test/IOS"
 
 config=transformer_12e_6d_2048_256.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
 
 
-
-if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
-    echo "stage -1: Data Download"
-    mkdir -p ${raw_data}
-    local/download_and_untar.sh ${raw_data} ${data_url} data_aishell
-    local/download_and_untar.sh ${raw_data} ${data_url} resource_aishell
-fi
-
 if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     echo "stage 0: Data preparation"
     # Data preparation
-    local/aishell_data_prep.sh ${raw_data}/data_aishell/wav ${raw_data}/data_aishell/transcript ${feats_dir}
-    for x in train dev test; do
-        cp ${feats_dir}/data/${x}/text ${feats_dir}/data/${x}/text.org
-        paste -d " " <(cut -f 1 -d" " ${feats_dir}/data/${x}/text.org) <(cut -f 2- -d" " ${feats_dir}/data/${x}/text.org | tr -d " ") \
-            > ${feats_dir}/data/${x}/text
+    local/aishell2_data_prep.py --raw_data ${raw_data} --outpath ${feats_dir}
+    # local/aishell2_data_prep.sh ${raw_data}/data_aishell2/wav ${raw_data}/data_aishell2/transcript ${raw_data}/devNtest ${feats_dir}
+
+    for x in train dev/Android dev/IOS dev/MIC test/Android test/IOS test/MIC; do
+        echo "processing ${feats_dir}/data/${x}"
         utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
         mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
 
@@ -81,7 +72,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     --config-name "${config}" \
     ++train_data_set_list="${feats_dir}/data/${train_set}/audio_datasets.jsonl" \
     ++cmvn_file="${feats_dir}/data/${train_set}/cmvn.json" \
-
+    ++dataset_conf.num_workers=$nj
 fi
 
 token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
@@ -118,7 +109,6 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   torchrun \
   --nnodes 1 \
   --nproc_per_node ${gpu_num} \
-  --master_port ${master_port} \
   ../../../funasr/bin/train.py \
   --config-path "${workspace}/conf" \
   --config-name "${config}" \
@@ -147,7 +137,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_ar_decoder"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_funasr_attn_rescoring"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 

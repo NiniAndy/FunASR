@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 
 
-CUDA_VISIBLE_DEVICES="0,1,2,3"
+CUDA_VISIBLE_DEVICES="2,3"
 
 # general configuration
 feats_dir="../DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
-stop_stage=5
+stage=4
+stop_stage=4
 
 # feature configuration
 nj=32
 
-inference_device="cuda" #"cpu", "cuda:0", "cuda:1"
+inference_device="cuda" #"cpu"
 inference_checkpoint="model.pt.avg10"
 inference_scp="wav.scp"
 inference_batch_size=1
@@ -25,7 +25,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="wenetctc_version"
+tag="Whole-exp2"
 workspace=`pwd`
 
 master_port=12345
@@ -38,11 +38,12 @@ set -e
 set -u
 set -o pipefail
 
-train_set=train
-valid_set=dev
-test_sets="dev test"
+train_set=WD/train
+valid_set=WD/dev
+# test_sets=WD/test
+test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
 
-config=transformer_12e_6d_2048_256.yaml
+config=paraformer_conformer_12e_6d_2048_256.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
 
 
@@ -80,8 +81,7 @@ if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
     --config-path "${workspace}/conf" \
     --config-name "${config}" \
     ++train_data_set_list="${feats_dir}/data/${train_set}/audio_datasets.jsonl" \
-    ++cmvn_file="${feats_dir}/data/${train_set}/cmvn.json" \
-
+    ++cmvn_file="${feats_dir}/data/${train_set}/cmvn.json"
 fi
 
 token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
@@ -89,7 +89,7 @@ echo "dictionary: ${token_list}"
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
     echo "stage 2: Dictionary Preparation"
     mkdir -p ${feats_dir}/data/${lang}_token_list/$token_type/
-
+   
     echo "make a dictionary"
     echo "<blank>" > ${token_list}
     echo "<s>" >> ${token_list}
@@ -147,7 +147,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_ar_decoder"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_ctc_weight_0.5"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 
@@ -177,6 +177,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           ++input="${_logdir}/keys.${JOB}.scp" \
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \
+          ++decoding_ctc_weight=0.5 \
           ++ncpu=1 \
           ++disable_log=true \
           ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt

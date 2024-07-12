@@ -1,0 +1,33 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "whisper_qwen_linear_finetune",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [   "--config-path", "/ssd/zhuang/code/FunASR2024/examples/industrial_data_pretraining/llm_asr/conf",
+                        "--config-name", "whisper_qwen_linear.yaml",
+                        "++train_data_set_list=/ssd/zhuang/code/FunASR2024/examples/librispeech/DATA/data/train-960/audio_datasets.jsonl",
+                        "++valid_data_set_list=/ssd/zhuang/code/FunASR2024/examples/librispeech/DATA/data/dev-other/audio_datasets.jsonl",
+                        "++dataset_conf.batch_size=4",
+                        "++dataset_conf.num_workers=4",
+                        "++train_conf.max_epoch=15",
+                        "++optim_conf.lr=0.0001",
+                        "++output_dir=/ssd/zhuang/code/FunASR2024/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_exp1"
+                    ],
+            "justMyCode": false,
+            "env": {
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "12355",
+                "WORLD_SIZE": "1",
+                "RANK": "0",
+                "LOCAL_RANK": "0"
+            },
+        },
+    ]
+}
