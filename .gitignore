@@ -2643,3 +2643,16 @@ examples/aishell/transformer/exp/baseline_transformer_12e_6d_2048_256_zh_char_we
 examples/aishell/transformer/exp/baseline_transformer_12e_6d_2048_256_zh_char_wenetctc_version/inference-model.pt.avg10/test_wenet_ar_decoder/logdir/log.3.txt
 examples/aishell/transformer/exp/baseline_transformer_12e_6d_2048_256_zh_char_wenetctc_version/inference-model.pt.avg10/test_wenet_ar_decoder/logdir/log.4.txt
 examples/aishell/transformer/exp/baseline_transformer_12e_6d_2048_256_zh_char_wenetctc_version/tensorboard/events.out.tfevents.1718173352.ubuntu-Super-Server
+examples/aishell/wav2vec2/exp/debug/config.yaml
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721401490.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721439340.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721440107.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721443818.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721444248.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721444472.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721444747.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721444998.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721445601.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721445692.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721445838.ubun
+examples/aishell/wav2vec2/exp/debug/tensorboard/events.out.tfevents.1721446006.ubun
