@@ -31,18 +31,10 @@
         },
 
         {
-            "name": "wav2vec2_finetune",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/conf",
-                        "--config-name", "wav2vec2_transformer_decoder.yaml",
-                        "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
-                        "++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
-                        "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/am.mvn",
-                        "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt",
-                        "++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/exp/debug"
                     ],
             "justMyCode": false,
             "env": {
@@ -53,5 +45,109 @@
                 "LOCAL_RANK": "0"
             },
         },
+      {
+            "name": "lora_debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/aishell/paraformer/conf",
+                        "--config-name", "paraformer_conformer_12e_6d_2048_256.yaml",
+                        "++init_param=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/model.pb",
+                        "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/train/audio_datasets.jsonl",
+                        "++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/dev/audio_datasets.jsonl",
+                        "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt",
+                        "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn",
+                        "++output_dir=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT",
+                        "++use_lora=true",
+                        "++lora_details=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/conf_lora/config.json",
+                        "++lora_bias=lora_only"
+                    ],
+            "justMyCode": false,
+            "env": {
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "12355",
+                "WORLD_SIZE": "1",
+                "RANK": "0",
+                "LOCAL_RANK": "0"
+            },
+        },
+
+        {
+            "name": "lora_inference_debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT",
+                        "--config-name", "config.yaml",
+                        "++init_param=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/model.pt.best",
+                        "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt",
+                        "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn",
+                        "++input=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/inference/ES/Southwestern/test/logdir/keys.1.scp",
+                        "++output_dir=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT",
+                        "++use_lora=true",
+                        "++lora_details=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/lora_config.json",
+                        "++device=cuda",
+                        "++ncpu=1",
+                        "++batch_size=1"
+                    ],
+            "justMyCode": false,
+            "env": {
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "12355",
+                "WORLD_SIZE": "1",
+                "RANK": "0",
+                "LOCAL_RANK": "0"
+            },
+        },
+
+        {
+            "name": "transformer_training_debug",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/aishell/transformer/conf",
+                        "--config-name", "transformer_12e_6d_2048_256.yaml",
+                        "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/train/audio_datasets.jsonl",
+                        "++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/dev/audio_datasets.jsonl",
+                        "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt",
+                        "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn",
+                        "++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/transformer/exp/debug",
+                        "++scheduler=partition_warmuplr"
+                    ],
+            "justMyCode": false,
+            "env": {
+                "MASTER_ADDR": "localhost",
+                "MASTER_PORT": "12355",
+                "WORLD_SIZE": "1",
+                "RANK": "0",
+                "LOCAL_RANK": "0"
+            },
+        },
+        {
+              "name": "wav2vec2_finetune",
+              "type": "debugpy",
+              "request": "launch",
+              "program": "${file}",
+              "console": "integratedTerminal",
+              "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/conf",
+                          "--config-name", "wav2vec2_transformer_decoder.yaml",
+                          "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
+                          "++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
+                          "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/am.mvn",
+                          "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt",
+                          "++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/exp/debug"
+                      ],
+              "justMyCode": false,
+              "env": {
+                  "MASTER_ADDR": "localhost",
+                  "MASTER_PORT": "12355",
+                  "WORLD_SIZE": "1",
+                  "RANK": "0",
+                  "LOCAL_RANK": "0"
+              },
+          },
     ]
 }

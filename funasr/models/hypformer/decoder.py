@@ -269,45 +269,40 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
 
         return x, olens
 
+
     def forward_one_step(
             self,
-            tgt: torch.Tensor,
-            tgt_mask: torch.Tensor,
-            memory: torch.Tensor,
-            cache: List[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        """Forward one step.
+            memory: torch.Tensor,  # [batch, maxlen_in, feat]
+            memory_mask: torch.Tensor,  # [batch]
+            hyp_in_pad: torch.Tensor,  # [batch, T]
+            hyps_mask: torch.Tensor,  # [batch]
+            decoding_idx: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
 
-        Args:
-            tgt: input token ids, int64 (batch, maxlen_out)
-            tgt_mask: input token mask,  (batch, maxlen_out)
-                      dtype=torch.uint8 in PyTorch 1.2-
-                      dtype=torch.bool in PyTorch 1.2+ (include 1.2)
-            memory: encoded memory, float32  (batch, maxlen_in, feat)
-            cache: cached output list of (batch, max_time_out-1, size)
-        Returns:
-            y, cache: NN output value and cache per `self.decoders`.
-            y.shape` is (batch, maxlen_out, token)
-        """
+        B, T = hyp_in_pad.size()  # [batch, T]
+        device = hyp_in_pad.device
+
+        tgt = hyp_in_pad  # [batch, T]
+        tgt_mask = hyps_mask # [batch, 1, T]
+        m = torch.ones(1,  tgt_mask.size(-1), tgt_mask.size(-1), device=tgt_mask.device).bool()
+        tgt_mask = tgt_mask & m  # [batch, T, T]
+
+        # Padding for Longformer
+        if memory_mask.shape[-1] != memory.shape[1]:
+            padlen = memory.shape[1] - memory_mask.shape[-1]
+            memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
+
         x = self.embed(tgt)
-        if cache is None:
-            cache = [None] * len(self.decoders)
-        new_cache = []
-        for c, decoder in zip(cache, self.decoders):
-            x, tgt_mask, memory, memory_mask = decoder(
-                x, tgt_mask, memory, None, cache=c
-            )
-            new_cache.append(x)
-
+        x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
         if self.normalize_before:
-            y = self.after_norm(x[:, -1])
-        else:
-            y = x[:, -1]
+            x = self.after_norm(x)
         if self.output_layer is not None:
-            y = torch.log_softmax(self.output_layer(y), dim=-1)
+            x = self.output_layer(x)
 
-        return y, new_cache
-    
+        x = x.reshape(B, x.size(-2), x.size(-1))  # [batch, maxlen_out, feat]
+        x = x[:, decoding_idx]  # [batch, feat]
+        return x, None
+
 
     def forward_hpy_step(
             self,

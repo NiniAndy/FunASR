@@ -67,7 +67,7 @@ specaug_conf:
 train_conf:
   accum_grad: 1
   grad_clip: 5
-  max_epoch: 150
+  max_epoch: 60
   val_scheduler_criterion:
       - valid
       - acc

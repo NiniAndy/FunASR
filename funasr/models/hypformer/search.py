@@ -844,8 +844,8 @@ def nar_ar_rescore(
             decoder_out, r_decoder_out = model.forward_attention_decoder(hyps_pad, hyps_lens, encoder_out, reverse_weight)
             hyps_pad = decoder_out.argmax(dim=-1)[:,:-1]
             hyps_pad, _ = add_sos_eos(hyps_pad, sos, eos, model.ignore_id)
-            
-            
+
+
         # Only use decoder score for rescoring
         best_score = -float('inf')
         best_index = 0
@@ -1051,7 +1051,6 @@ def _para_beam_search(decoder_out, beam_size=10):
     return nbest, nbest_scores
 
 
-
 def hyp_beam_search(
     model: torch.nn.Module,
     encoder_out: torch.Tensor,
@@ -1095,7 +1094,7 @@ def hyp_beam_search(
             break
         # 单步解码
         logp, _ = decoder.forward_hpy_step(hyps, hyps_mask, encoder_out, encoder_mask, decoding_idx, cache)
-        
+
         # 2.2 First beam prune: select topk best prob at current time
         top_k_logp, top_k_index = logp.topk(beam_size)  # (B*N, N)
         top_k_logp = mask_finished_scores(top_k_logp, end_flag)
