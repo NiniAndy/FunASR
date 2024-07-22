@@ -18,7 +18,7 @@ def import_submodules(package, recursive=True):
             package = importlib.import_module(package)
         except Exception as e:
             # 如果想要看到导入错误的具体信息，可以取消注释下面的行
-            # print(f"Failed to import {package}: {e}")
+            print(f"Failed to import {package}: {e}")
             pass
     results = {}
     if not isinstance(package, str):
@@ -27,7 +27,7 @@ def import_submodules(package, recursive=True):
                 results[name] = importlib.import_module(name)
             except Exception as e:
                 # 如果想要看到导入错误的具体信息，可以取消注释下面的行
-                # print(f"Failed to import {name}: {e}")
+                print(f"Failed to import {name}: {e}")
                 pass
             if recursive and is_pkg:
                 results.update(import_submodules(name))

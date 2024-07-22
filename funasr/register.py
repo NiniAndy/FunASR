@@ -10,6 +10,8 @@ class RegisterTables:
     frontend_classes = {}
     specaug_classes = {}
     normalize_classes = {}
+    pretrain_classes = {}
+    pretrain_cfg_classes = {}
     encoder_classes = {}
     decoder_classes = {}
     joint_network_classes = {}
