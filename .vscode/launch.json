@@ -134,9 +134,8 @@
               "console": "integratedTerminal",
               "args": [   "--config-path", "/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/conf",
                           "--config-name", "wav2vec2_transformer_decoder.yaml",
-                          "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
+                          "++train_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/audio_datasets.jsonl",
                           "++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/test/audio_datasets.jsonl",
-                          "++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/am.mvn",
                           "++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt",
                           "++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/wav2vec2/exp/debug"
                       ],

@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: PretrainASR
+model: PretrainASR_NAR
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -30,8 +30,9 @@ pretrain_encoder_conf:
         time_mask_width_ratio_range: (0, 0.1)
         num_time_mask: 2
 
+
 # decoder
-decoder: TransformerDecoder
+decoder: ParaformerSANDecoder
 decoder_conf:
     attention_heads: 4
     linear_units: 2048
@@ -40,6 +41,15 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
+
+# predictor
+predictor: CifPredictor
+predictor_conf:
+    idim: 256
+    threshold: 1.0
+    l_order: 1
+    r_order: 1
+    tail_threshold: 0.45
 
 
 # frontend related
