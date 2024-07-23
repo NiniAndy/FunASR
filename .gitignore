@@ -5821,3 +5821,14 @@ examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Ais
 examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep50
 examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/train.log.txt.2024-07-22_16-01
 examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/tensorboard/events.out.tfevents.1721635326.ubun
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep52
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep53
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep54
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep55
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep56
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep57
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep59
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep60
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep62
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep63
+examples/aishell/wav2vec2/exp/baseline_wav2vec2_transformer_decoder_Wav2Vec2-Aishell-FT/model.pt.ep64
