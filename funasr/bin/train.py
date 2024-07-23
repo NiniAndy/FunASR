@@ -190,7 +190,7 @@ def main(**kwargs):
 
         assert encoder_params, "Encoder parameters are empty!"
         optim_groups = [
-        {'params': encoder_params, 'lr': 1e-4},
+        {'params': encoder_params, 'lr': 1e-5},
         {'params': base_params, 'lr': kwargs.get("optim_conf", {}).get("lr", 1e-3)}
         ]
         

@@ -58,8 +58,7 @@ class PretrainASR(nn.Module):
         super().__init__()
 
         pretrain_classes = tables.pretrain_classes.get(pretrain_encoder)
-        pretrain_cfg_classes = tables.pretrain_cfg_classes.get(
-            pretrain_encoder)
+        pretrain_cfg_classes = tables.pretrain_cfg_classes.get(pretrain_encoder)
 
         pretrain_path = pretrain_encoder_conf["pretrain_path"]
         pretrain_model = torch.load(pretrain_path)
@@ -75,14 +74,27 @@ class PretrainASR(nn.Module):
         cfg = load_cfg_from_dict(cfg, cfg_dict)
 
         pretrain_encoder = pretrain_classes(cfg, **pretrain_encoder_conf)
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
+        # 去除掉不必要的模块
+        if hasattr(pretrain_encoder, "quantizer"):
+            del pretrain_encoder.quantizer
+        if hasattr(pretrain_encoder, "project_q"):
+            del pretrain_encoder.project_q
+        if hasattr(pretrain_encoder, "dropout_features"):
+            del pretrain_encoder.dropout_features
+        if hasattr(pretrain_encoder, "final_proj"):
+            del pretrain_encoder.final_proj
+
         pretrain_encoder, _, unmatched_keys, ignored_keys = self.load_pretrained_model(
-            pretrain_encoder, pretrain_model_para)
+            pretrain_encoder, pretrain_model_para
+        )
+
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
         if local_rank == 0:
-            logging.info(
-                "Pretrained model loaded from {}".format(pretrain_path))
+            print ("-"*100)
+            logging.info("Pretrained model loaded from {}".format(pretrain_path))
             print("Unmatched keys in pretrained dict:", unmatched_keys)
             print("Ignored keys in model dict:", ignored_keys)
+            print ("-"*100)
 
         encoder_output_size = cfg.encoder_embed_dim
         if decoder is not None:
@@ -97,9 +109,9 @@ class PretrainASR(nn.Module):
             if ctc_conf is None:
                 ctc_conf = {}
 
-            ctc = CTC(odim=vocab_size,
-                      encoder_output_size=encoder_output_size,
-                      **ctc_conf)
+            ctc = CTC(
+                odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf
+            )
 
         self.blank_id = blank_id
         self.sos = sos if sos is not None else vocab_size - 1
@@ -113,7 +125,8 @@ class PretrainASR(nn.Module):
             self.encoder.interctc_use_conditioning = False
         if self.encoder.interctc_use_conditioning:
             self.encoder.conditioning_layer = torch.nn.Linear(
-                vocab_size, self.encoder.output_size())
+                vocab_size, self.encoder.output_size()
+            )
         self.interctc_weight = interctc_weight
 
         # self.error_calculator = None
@@ -156,10 +169,7 @@ class PretrainASR(nn.Module):
         ignored_keys = [k for k in model_dict if k not in pretrained_dict]
 
         # 过滤不匹配的键
-        pretrained_dict = {
-            k: v
-            for k, v in pretrained_dict.items() if k in model_dict
-        }
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
 
         model_dict.update(pretrained_dict)
         model.load_state_dict(model_dict)
@@ -190,8 +200,11 @@ class PretrainASR(nn.Module):
 
         # 1. Encoder
         encoder_out, intermediate_outs = self.encoder(speech)
-        encoder_out_lens = self.encoder.feature_extractor.get_feat_extract_output_lengths(
-            speech_lengths)
+        encoder_out_lens = (
+            self.encoder.feature_extractor.get_feat_extract_output_lengths(
+                speech_lengths
+            )
+        )
 
         loss_att, acc_att, cer_att, wer_att = None, None, None, None
         loss_ctc, cer_ctc = None, None
@@ -199,13 +212,12 @@ class PretrainASR(nn.Module):
 
         # decoder: CTC branch
         if self.ctc_weight != 0.0:
-            loss_ctc, cer_ctc = self._calc_ctc_loss(encoder_out,
-                                                    encoder_out_lens, text,
-                                                    text_lengths)
+            loss_ctc, cer_ctc = self._calc_ctc_loss(
+                encoder_out, encoder_out_lens, text, text_lengths
+            )
 
             # Collect CTC branch stats
-            stats["loss_ctc"] = loss_ctc.detach(
-            ) if loss_ctc is not None else None
+            stats["loss_ctc"] = loss_ctc.detach() if loss_ctc is not None else None
             stats["cer_ctc"] = cer_ctc
 
         # Intermediate CTC (optional)
@@ -214,25 +226,28 @@ class PretrainASR(nn.Module):
             for layer_idx, intermediate_out in intermediate_outs:
                 # we assume intermediate_out has the same length & padding
                 # as those of encoder_out
-                loss_ic, cer_ic = self._calc_ctc_loss(intermediate_out,
-                                                      encoder_out_lens, text,
-                                                      text_lengths)
+                loss_ic, cer_ic = self._calc_ctc_loss(
+                    intermediate_out, encoder_out_lens, text, text_lengths
+                )
                 loss_interctc = loss_interctc + loss_ic
 
                 # Collect Intermedaite CTC stats
                 stats["loss_interctc_layer{}".format(layer_idx)] = (
-                    loss_ic.detach() if loss_ic is not None else None)
+                    loss_ic.detach() if loss_ic is not None else None
+                )
                 stats["cer_interctc_layer{}".format(layer_idx)] = cer_ic
 
             loss_interctc = loss_interctc / len(intermediate_outs)
 
             # calculate whole encoder loss
-            loss_ctc = (1 - self.interctc_weight
-                        ) * loss_ctc + self.interctc_weight * loss_interctc
+            loss_ctc = (
+                1 - self.interctc_weight
+            ) * loss_ctc + self.interctc_weight * loss_interctc
 
         # decoder: Attention decoder branch
         loss_att, acc_att, cer_att, wer_att = self._calc_att_loss(
-            encoder_out, encoder_out_lens, text, text_lengths)
+            encoder_out, encoder_out_lens, text, text_lengths
+        )
 
         # 3. CTC-Att loss definition
         if self.ctc_weight == 0.0:
@@ -240,8 +255,7 @@ class PretrainASR(nn.Module):
         elif self.ctc_weight == 1.0:
             loss = loss_ctc
         else:
-            loss = self.ctc_weight * loss_ctc + (1 -
-                                                 self.ctc_weight) * loss_att
+            loss = self.ctc_weight * loss_ctc + (1 - self.ctc_weight) * loss_att
 
         # Collect Attn branch stats
         stats["loss_att"] = loss_att.detach() if loss_att is not None else None
@@ -255,8 +269,7 @@ class PretrainASR(nn.Module):
         # force_gatherable: to-device and to-tensor if scalar for DataParallel
         if self.length_normalized_loss:
             batch_size = int((text_lengths + 1).sum())
-        loss, stats, weight = force_gatherable((loss, stats, batch_size),
-                                               loss.device)
+        loss, stats, weight = force_gatherable((loss, stats, batch_size), loss.device)
         return loss, stats, weight
 
     def encode(
@@ -285,12 +298,11 @@ class PretrainASR(nn.Module):
         # feats: (Batch, Length, Dim)
         # -> encoder_out: (Batch, Length2, Dim2)
         if self.encoder.interctc_use_conditioning:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech,
-                                                            speech_lengths,
-                                                            ctc=self.ctc)
-        else:
             encoder_out, encoder_out_lens, _ = self.encoder(
-                speech, speech_lengths)
+                speech, speech_lengths, ctc=self.ctc
+            )
+        else:
+            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
@@ -308,13 +320,13 @@ class PretrainASR(nn.Module):
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
     ):
-        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos,
-                                            self.ignore_id)
+        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id)
         ys_in_lens = ys_pad_lens + 1
 
         # 1. Forward decoder
-        decoder_out, _ = self.decoder(encoder_out, encoder_out_lens, ys_in_pad,
-                                      ys_in_lens)
+        decoder_out, _ = self.decoder(
+            encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens
+        )
 
         # 2. Compute attention loss
         loss_att = self.criterion_att(decoder_out, ys_out_pad)
@@ -329,8 +341,7 @@ class PretrainASR(nn.Module):
             cer_att, wer_att = None, None
         else:
             ys_hat = decoder_out.argmax(dim=-1)
-            cer_att, wer_att = self.error_calculator(ys_hat.cpu(),
-                                                     ys_pad.cpu())
+            cer_att, wer_att = self.error_calculator(ys_hat.cpu(), ys_pad.cpu())
 
         return loss_att, acc_att, cer_att, wer_att
 
@@ -348,9 +359,7 @@ class PretrainASR(nn.Module):
         cer_ctc = None
         if not self.training and self.error_calculator is not None:
             ys_hat = self.ctc.argmax(encoder_out).data
-            cer_ctc = self.error_calculator(ys_hat.cpu(),
-                                            ys_pad.cpu(),
-                                            is_ctc=True)
+            cer_ctc = self.error_calculator(ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_ctc, cer_ctc
 
     def init_beam_search(
@@ -418,8 +427,10 @@ class PretrainASR(nn.Module):
             self.nbest = kwargs.get("nbest", 1)
 
         meta_data = {}
-        if (isinstance(data_in, torch.Tensor)
-                and kwargs.get("data_type", "sound") == "fbank"):  # fbank
+        if (
+            isinstance(data_in, torch.Tensor)
+            and kwargs.get("data_type", "sound") == "fbank"
+        ):  # fbank
             speech, speech_lengths = data_in, data_lengths
             if len(speech.shape) < 3:
                 speech = speech[None, :, :]
@@ -437,15 +448,19 @@ class PretrainASR(nn.Module):
             )
             time2 = time.perf_counter()
             meta_data["load_data"] = f"{time2 - time1:0.3f}"
-            speech, speech_lengths = extract_fbank(audio_sample_list,
-                                                   data_type=kwargs.get(
-                                                       "data_type", "sound"),
-                                                   frontend=frontend)
+            speech, speech_lengths = extract_fbank(
+                audio_sample_list,
+                data_type=kwargs.get("data_type", "sound"),
+                frontend=frontend,
+            )
             time3 = time.perf_counter()
             meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
-            meta_data["batch_data_time"] = (speech_lengths.sum().item() *
-                                            frontend.frame_shift *
-                                            frontend.lfr_n / 1000)
+            meta_data["batch_data_time"] = (
+                speech_lengths.sum().item()
+                * frontend.frame_shift
+                * frontend.lfr_n
+                / 1000
+            )
 
         speech = speech.to(device=kwargs["device"])
         speech_lengths = speech_lengths.to(device=kwargs["device"])
@@ -461,7 +476,7 @@ class PretrainASR(nn.Module):
             minlenratio=kwargs.get("minlenratio", 0.0),
         )
 
-        nbest_hyps = nbest_hyps[:self.nbest]
+        nbest_hyps = nbest_hyps[: self.nbest]
 
         results = []
         b, n, d = encoder_out.size()
@@ -484,20 +499,19 @@ class PretrainASR(nn.Module):
                 # remove blank symbol id, which is assumed to be 0
                 token_int = list(
                     filter(
-                        lambda x: x != self.eos and x != self.sos and x != self
-                        .blank_id, token_int))
+                        lambda x: x != self.eos
+                        and x != self.sos
+                        and x != self.blank_id,
+                        token_int,
+                    )
+                )
 
                 # Change integer-ids to tokens
                 token = tokenizer.ids2tokens(token_int)
                 text = tokenizer.tokens2text(token)
 
-                text_postprocessed, _ = postprocess_utils.sentence_postprocess(
-                    token)
-                result_i = {
-                    "key": key[i],
-                    "token": token,
-                    "text": text_postprocessed
-                }
+                text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
+                result_i = {"key": key[i], "token": token, "text": text_postprocessed}
                 results.append(result_i)
 
                 if ibest_writer is not None:
