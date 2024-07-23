@@ -112,12 +112,12 @@ class AutoModel:
 
     def __init__(self, **kwargs):
 
-        # try:
-        #     from funasr.utils.version_checker import check_for_update
+        try:
+            from funasr.utils.version_checker import check_for_update
 
-        #     check_for_update()
-        # except:
-        #     pass
+            check_for_update(disable=kwargs.get("disable_update", False))
+        except:
+            pass
 
         log_level = getattr(logging, kwargs.get("log_level", "INFO").upper())
         logging.basicConfig(level=log_level)
@@ -221,7 +221,7 @@ class AutoModel:
         deep_update(model_conf, kwargs.get("model_conf", {}))
         deep_update(model_conf, kwargs)
         model = model_class(**model_conf, vocab_size=vocab_size)
-        
+
         # if use lora update model
         use_lora = kwargs.get("use_lora", False)
         lora_details = kwargs.get("lora_details", None)
