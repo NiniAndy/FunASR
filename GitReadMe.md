@@ -38,3 +38,16 @@ git merge origin/main
 git push origin mymerge
 ```
 
+# 一些debug用得上的形参
+
+#### transformer training
+```angular2html
+--config-path /ssd/zhuang/code/FunASR/examples/aishell/transformer/conf
+--config-name transformer_12e_6d_2048_256.yaml
+++train_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/train/audio_datasets.jsonl
+++valid_data_set_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data/ES/Southwestern/dev/audio_datasets.jsonl
+++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt 
+++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn 
+++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/transformer/exp/debug
+++scheduler=partition_warmuplr
+```
