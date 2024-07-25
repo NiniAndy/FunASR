@@ -51,3 +51,16 @@ git push origin mymerge
 ++output_dir=/ssd/zhuang/code/FunASR/examples/aishell/transformer/exp/debug
 ++scheduler=partition_warmuplr
 ```
+
+#### whisper_qwen_linear_finetune
+```angular2html
+--config-path /ssd/zhuang/code/FunASR2024/examples/industrial_data_pretraining/llm_asr/conf 
+--config-name whisper_qwen_linear.yaml 
+++train_data_set_list=/ssd/zhuang/code/FunASR2024/examples/librispeech/DATA/data/train-960/audio_datasets.jsonl 
+++valid_data_set_list=/ssd/zhuang/code/FunASR2024/examples/librispeech/DATA/data/dev-other/audio_datasets.jsonl 
+++dataset_conf.batch_size=4 
+++dataset_conf.num_workers=4 
+++train_conf.max_epoch=15 
+++optim_conf.lr=0.0001
+++output_dir=/ssd/zhuang/code/FunASR2024/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_exp1
+```
