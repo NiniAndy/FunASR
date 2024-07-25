@@ -8,8 +8,8 @@ feats_dir="../DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
-stop_stage=5
+stage=4
+stop_stage=4
 
 # feature configuration
 nj=32
@@ -25,7 +25,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="wenetctc_version"
+tag="debug"
 workspace=`pwd`
 
 master_port=12345
