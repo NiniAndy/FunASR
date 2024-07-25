@@ -12,7 +12,7 @@ model_conf:
     length_normalized_loss: true
 
 # encoder
-audio_encoder: "/nfs/zhifu.gzf/init_model/Whisper-large-v3" #iic/Whisper-large-v3
+audio_encoder: /ssd/zhuang/code/LLM/whisper-large-v3-ms/Whisper-large-v3
 audio_encoder_conf:
     hub: ms
     freeze: true
@@ -21,7 +21,7 @@ llm: Qwen1.5-7b-chat
 llm_conf:
   hub: hf
   freeze: true
-  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat"
+  init_param_path: "/ssd/zhuang/code/LLM/Qwen1.5-7B-Chat/"
 
 audio_adaptor: Linear
 audio_adaptor_conf:
@@ -60,7 +60,7 @@ train_conf:
   grad_clip: 5
   max_epoch: 15
   keep_nbest_models: 10
-  log_interval: 10
+  log_interval: 300
 
 optim: adamw
 optim_conf:
@@ -69,7 +69,8 @@ optim_conf:
 
 scheduler: warmuplr
 scheduler_conf:
-   warmup_steps: 1500
+   warmup_steps: 3000
+  #  warmup_steps: 1500
 
 dataset: AudioLLMQwenAudioDataset
 dataset_conf:
@@ -90,5 +91,5 @@ dataset_conf:
 tokenizer: HuggingfaceTokenizer
 tokenizer_conf:
   unk_symbol: <unk>
-  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat"
+  init_param_path: "/ssd/zhuang/code/LLM/Qwen1.5-7B-Chat/"
 
