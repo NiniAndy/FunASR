@@ -114,7 +114,6 @@ class AutoModel:
 
         try:
             from funasr.utils.version_checker import check_for_update
-
             check_for_update(disable=kwargs.get("disable_update", False))
         except:
             pass
@@ -235,8 +234,8 @@ class AutoModel:
         # init_param
         init_param = kwargs.get("init_param", None)
         if init_param is not None:
+            local_rank = int(os.environ.get("LOCAL_RANK", 0))
             if os.path.exists(init_param):
-                local_rank = int(os.environ.get("LOCAL_RANK", 0))
                 if local_rank == 0:
                     logging.info(f"Loading pretrained params from {init_param}")
                 load_pretrained_model(

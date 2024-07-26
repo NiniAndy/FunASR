@@ -131,6 +131,12 @@ class IndexDSJsonlRankFull(torch.utils.data.Dataset):
 
         self.contents = contents
 
+        self._text_language_flag = "text_language" in contents[0]
+        self._audio_language_flag = "audio_language" in contents[0]
+        self._emo_target_flag = "emo_target" in contents[0]
+        self._event_target_flag = "event_target" in contents[0]
+        self._with_or_wo_itn_flag = "with_or_wo_itn" in contents[0]
+
         logging.info("total_num of samplers: {}, {}".format(len(self.contents), path))
 
     def __len__(self):
@@ -148,3 +154,18 @@ class IndexDSJsonlRankFull(torch.utils.data.Dataset):
     def get_target_len(self, data_dict):
 
         return data_dict.get("target_len", 0)
+
+    def text_language_flag(self):
+        return self._text_language_flag
+
+    def audio_language_flag(self):
+        return self._audio_language_flag
+
+    def emo_target_flag(self):
+        return self._emo_target_flag
+
+    def event_target_flag(self):
+        return self._event_target_flag
+
+    def with_or_wo_itn_flag(self):
+        return self._with_or_wo_itn_flag
