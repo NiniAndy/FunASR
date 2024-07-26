@@ -2,17 +2,14 @@
 Search algorithms for ASR refer to WeNet
 '''
 
-import math
 from collections import defaultdict
-import math
-from typing import Any, List, Optional, Tuple, Union, Dict
+from typing import List, Optional, Tuple, Dict
 
+import math
 import torch
 from torch.nn.utils.rnn import pad_sequence
 
 WHISPER_LANGS = None
-
-
 
 
 class DecodeResult:
@@ -46,6 +43,7 @@ class DecodeResult:
         self.nbest_scores = nbest_scores
         self.nbest_times = nbest_times
 
+
 def remove_duplicates_and_blank(hyp: List[int],
                                 blank_id: int = 0) -> List[int]:
     new_hyp: List[int] = []
@@ -66,8 +64,8 @@ def ctc_greedy_search(ctc_probs: torch.Tensor,
     maxlen = ctc_probs.size(1)
     topk_prob, topk_index = ctc_probs.topk(1, dim=2)  # (B, maxlen, 1)
     topk_index = topk_index.view(batch_size, maxlen)  # (B, maxlen)
-    
-    max_len  = maxlen
+
+    max_len = maxlen
     max_len = max_len if max_len > 0 else ctc_lens.max().item()
     seq_range = torch.arange(0,
                              max_len,
@@ -86,8 +84,6 @@ def ctc_greedy_search(ctc_probs: torch.Tensor,
         r = DecodeResult(remove_duplicates_and_blank(hyp, blank_id))
         results.append(r)
     return results[0].tokens
-
-
 
 
 def make_pad_mask(lengths: torch.Tensor, max_len: int = 0) -> torch.Tensor:
@@ -433,7 +429,6 @@ def log_add(*args) -> float:
     return a_max + lsp
 
 
-
 class DecodeResult:
 
     def __init__(self,
@@ -474,8 +469,8 @@ class PrefixScore:
                  ns: float = float('-inf'),
                  v_s: float = float('-inf'),
                  v_ns: float = float('-inf'),
-                 context_state = None,
-                #  context_state: ContextState = None,
+                 context_state=None,
+                 #  context_state: ContextState = None,
                  context_score: float = 0.0):
         self.s = s  # blank_ending_score
         self.ns = ns  # none_blank_ending_score
@@ -531,12 +526,12 @@ def ctc_greedy_search(ctc_probs: torch.Tensor,
 
 
 def ctc_prefix_beam_search(
-    ctc_probs: torch.Tensor,
-    ctc_lens: torch.Tensor,
-    beam_size: int,
-    context_graph = None,
-    # context_graph: ContextGraph = None,
-    blank_id: int = 0,
+        ctc_probs: torch.Tensor,
+        ctc_lens: torch.Tensor,
+        beam_size: int,
+        context_graph=None,
+        # context_graph: ContextGraph = None,
+        blank_id: int = 0,
 ) -> List[DecodeResult]:
     """
         Returns:
@@ -595,7 +590,7 @@ def ctc_prefix_beam_search(
                             next_score1.has_context = True
 
                         # Update *u-u -> *uu, - is for blank
-                        n_prefix = prefix + (u, )
+                        n_prefix = prefix + (u,)
                         next_score2 = next_hyps[n_prefix]
                         next_score2.ns = log_add(next_score2.ns,
                                                  prefix_score.s + prob)
@@ -609,7 +604,7 @@ def ctc_prefix_beam_search(
                                                        prefix_score, u)
                             next_score2.has_context = True
                     else:
-                        n_prefix = prefix + (u, )
+                        n_prefix = prefix + (u,)
                         next_score = next_hyps[n_prefix]
                         next_score.ns = log_add(next_score.ns,
                                                 prefix_score.score() + prob)
@@ -657,12 +652,12 @@ def ctc_prefix_beam_search(
 
 
 def attention_beam_search(
-    model,
-    encoder_out: torch.Tensor,
-    encoder_mask: torch.Tensor,
-    beam_size: int = 10,
-    length_penalty: float = 0.0,
-    infos: Dict[str, List[str]] = None,
+        model,
+        encoder_out: torch.Tensor,
+        encoder_mask: torch.Tensor,
+        beam_size: int = 10,
+        length_penalty: float = 0.0,
+        infos: Dict[str, List[str]] = None,
 ) -> List[DecodeResult]:
     device = encoder_out.device
     batch_size = encoder_out.shape[0]
@@ -673,7 +668,7 @@ def attention_beam_search(
     running_size = batch_size * beam_size
     encoder_out = encoder_out.unsqueeze(1).repeat(1, beam_size, 1, 1).view(running_size, maxlen, encoder_dim)  # (B*N, maxlen, encoder_dim)
     # encoder_mask = encoder_mask.unsqueeze(1).repeat(1, beam_size, 1, 1).view(running_size, 1, maxlen)  # (B*N, 1, max_len)
-    hyps = torch.ones([running_size, 1], dtype=torch.long,  device=device).fill_(model.sos)  # (B*N, 1)
+    hyps = torch.ones([running_size, 1], dtype=torch.long, device=device).fill_(model.sos)  # (B*N, 1)
     prefix_len = hyps.size(1)
     scores = torch.tensor([0.0] + [-float('inf')] * (beam_size - 1), dtype=torch.float)
     scores = scores.to(device).repeat([batch_size]).unsqueeze(1).to(device)  # (B*N, 1)
@@ -737,13 +732,13 @@ def attention_beam_search(
 
 
 def attention_rescoring(
-    model,
-    ctc_prefix_results: List[DecodeResult],
-    encoder_outs: torch.Tensor,
-    encoder_lens: torch.Tensor,
-    ctc_weight: float = 0.0,
-    reverse_weight: float = 0.0,
-    infos: Dict[str, List[str]] = None,
+        model,
+        ctc_prefix_results: List[DecodeResult],
+        encoder_outs: torch.Tensor,
+        encoder_lens: torch.Tensor,
+        ctc_weight: float = 0.0,
+        reverse_weight: float = 0.0,
+        infos: Dict[str, List[str]] = None,
 ) -> List[DecodeResult]:
     """
         Args:
@@ -810,13 +805,13 @@ def attention_rescoring(
 
 
 def nar_ar_rescore(
-    model,
-    ctc_prefix_results: List[DecodeResult],
-    encoder_outs: torch.Tensor,
-    encoder_lens: torch.Tensor,
-    ctc_weight: float = 0.0,
-    reverse_weight: float = 0.0,
-    infos: Dict[str, List[str]] = None,
+        model,
+        ctc_prefix_results: List[DecodeResult],
+        encoder_outs: torch.Tensor,
+        encoder_lens: torch.Tensor,
+        ctc_weight: float = 0.0,
+        reverse_weight: float = 0.0,
+        infos: Dict[str, List[str]] = None,
 ) -> List[DecodeResult]:
     """
         Args:
@@ -842,9 +837,8 @@ def nar_ar_rescore(
 
         for _ in range(3):
             decoder_out, r_decoder_out = model.forward_attention_decoder(hyps_pad, hyps_lens, encoder_out, reverse_weight)
-            hyps_pad = decoder_out.argmax(dim=-1)[:,:-1]
+            hyps_pad = decoder_out.argmax(dim=-1)[:, :-1]
             hyps_pad, _ = add_sos_eos(hyps_pad, sos, eos, model.ignore_id)
-
 
         # Only use decoder score for rescoring
         best_score = -float('inf')
@@ -879,10 +873,6 @@ def nar_ar_rescore(
                          times=[],
                          tokens_confidence=tokens_confidences[best_index]))
     return results
-
-
-
-
 
 
 def paraformer_greedy_search(
@@ -926,12 +916,11 @@ def paraformer_greedy_search(
     return results
 
 
-
 def _batch_beam_search(
-    logit: torch.Tensor,
-    masks: torch.Tensor,
-    beam_size: int = 10,
-    eos: int = -1,
+        logit: torch.Tensor,
+        masks: torch.Tensor,
+        beam_size: int = 10,
+        eos: int = -1,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """ Perform batch beam search
 
@@ -985,9 +974,6 @@ def _batch_beam_search(
     return indices, log_prob
 
 
-
-
-
 def paraformer_beam_search(decoder_out: torch.Tensor,
                            decoder_out_lens: torch.Tensor,
                            beam_size: int = 10,
@@ -1009,14 +995,14 @@ def paraformer_beam_search(decoder_out: torch.Tensor,
 
     results = []
     results.append(
-    DecodeResult(
-        tokens=best,
-        score=best_score,
-        times=best_time,
-        nbest=nbest,
-        nbest_scores=nbest_scores,
-        nbest_times=nbest_times))
-    
+        DecodeResult(
+            tokens=best,
+            score=best_score,
+            times=best_time,
+            nbest=nbest,
+            nbest_scores=nbest_scores,
+            nbest_times=nbest_times))
+
     return results
 
 
@@ -1026,7 +1012,7 @@ def _para_beam_search(decoder_out, beam_size=10):
     log_probs, indices = torch.log_softmax(decoder_out[0, 0, :], dim=-1).topk(beam_size)
     # 初始化激活的假设（hypotheses），初始时每个假设只包含一个token
     hypotheses = [(log_prob, [index]) for log_prob, index in zip(log_probs, indices)]
-    
+
     # 遍历每个时间步
     for t in range(1, seq_len):
         all_candidates = []
@@ -1038,11 +1024,11 @@ def _para_beam_search(decoder_out, beam_size=10):
                 (log_prob + next_log_prob, seq + [next_index])
                 for next_log_prob, next_index in zip(next_log_probs, next_indices)
             )
-        
+
         # 选出新的 beam_size 个最佳假设
         all_candidates.sort(reverse=True, key=lambda x: x[0])
         hypotheses = all_candidates[:beam_size]
-    
+
     nbest_scores = []
     nbest = []
     for log_prob, seq in hypotheses:
@@ -1052,12 +1038,12 @@ def _para_beam_search(decoder_out, beam_size=10):
 
 
 def hyp_beam_search(
-    model: torch.nn.Module,
-    encoder_out: torch.Tensor,
-    encoder_len: torch.Tensor,
-    prefix: torch.Tensor,
-    beam_size: int = 10,
-    length_penalty: float = 0.0,
+        model: torch.nn.Module,
+        encoder_out: torch.Tensor,
+        encoder_len: torch.Tensor,
+        prefix: torch.Tensor,
+        beam_size: int = 10,
+        length_penalty: float = 0.0,
 ) -> List[DecodeResult]:
     decoder = model.hyp_decoder
     device = encoder_out.device
@@ -1077,18 +1063,18 @@ def hyp_beam_search(
         hyps = prefix.unsqueeze(1).repeat(1, beam_size, 1).view(running_size, -1)
 
     # 扩展encoder输出和掩码以适应每个beam
-    encoder_out = encoder_out.unsqueeze(1).repeat(1, beam_size, 1, 1).view(running_size, maxlen, encoder_dim) # (B*N, maxlen, encoder_dim)
+    encoder_out = encoder_out.unsqueeze(1).repeat(1, beam_size, 1, 1).view(running_size, maxlen, encoder_dim)  # (B*N, maxlen, encoder_dim)
     encoder_mask = make_non_pad_mask(encoder_len).unsqueeze(1).repeat(1, beam_size, 1).view(running_size, 1, maxlen)  # (B*N, 1, max_len)
     hyps_len = torch.tensor([hyps.size(-1)])
     hyps_mask = (~make_pad_mask(hyps_len))[:, None, :].to(device).repeat(beam_size, 1, 1)  # (B*N, 1, max_len)    
-    
+
     cache: Optional[List[torch.Tensor]] = None
     scores = torch.tensor([0.0] + [-float('inf')] * (beam_size - 1), dtype=torch.float)
     scores = scores.to(device).repeat([batch_size]).unsqueeze(1).to(device)  # (B*N, 1)
     end_flag = torch.zeros_like(scores, dtype=torch.bool, device=device)
 
     # 解码每一步
-    for decoding_idx in range(hyps_len-2):
+    for decoding_idx in range(hyps_len - 2):
         # Stop if all batch and all beam produce eos
         if end_flag.sum() == running_size:
             break
@@ -1121,10 +1107,10 @@ def hyp_beam_search(
         best_hyps_index = best_k_index // beam_size
         last_best_k_hyps = torch.index_select(hyps, dim=0, index=best_hyps_index)  # (B*N, i)
         if decoding_idx + 1 < prefix.size(-1):
-            last_best_k_hyps[:, decoding_idx+1] = best_k_pred
+            last_best_k_hyps[:, decoding_idx + 1] = best_k_pred
         else:
             last_best_k_hyps = torch.cat((last_best_k_hyps, best_k_pred.view(-1, 1)), dim=1)
-        hyps = last_best_k_hyps 
+        hyps = last_best_k_hyps
 
         # 2.6 Update end flag
         end_flag = torch.eq(hyps[:, -1], model.eos).view(-1, 1)
@@ -1144,4 +1130,3 @@ def hyp_beam_search(
         hyp = hyp[hyp != model.eos]
         results.append(DecodeResult(hyp.tolist()))
     return results
-
