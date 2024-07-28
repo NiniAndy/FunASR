@@ -62,6 +62,29 @@ class BaseTokenizer(ABC):
                 raise RuntimeError(f"Unknown symbol '{unk_symbol}' doesn't exist in the token_list")
             self.unk_id = self.token2id[self.unk_symbol]
 
+        # 补充字典
+        if kwargs.get("add_special_token_list", False):
+            add_special_token_list = kwargs["add_special_token_list"]
+            try:
+                with open(add_special_token_list, "r", encoding="utf-8") as f:
+                    content = f.read().strip()  # 去除首尾空白字符
+                    if content:  # 检查内容是否为空
+                        self.add_special_token_list = content.splitlines() # 将内容按行分割成列表
+                    else:
+                        print("File is empty.")
+                        self.add_special_token_list = []  # 或者其他适当的默认值
+            except Exception as e:
+                print(f"Error reading file: {e}")
+                self.add_special_token_list = []  # 或者其他适当的默认值
+
+
+            for i, t in enumerate(self.add_special_token_list):
+                if t in self.token2id:
+                    raise RuntimeError(f'Symbol "{t}" is duplicated')
+                self.token2id[t] = i + len(self.token_list)
+            self.token_list += self.add_special_token_list
+
+
     def encode(self, text, **kwargs):
         tokens = self.text2tokens(text)
         text_ints = self.tokens2ids(tokens)
