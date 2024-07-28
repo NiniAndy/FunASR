@@ -8,8 +8,8 @@ feats_dir="../DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
-stop_stage=5
+stage=4
+stop_stage=4
 
 # feature configuration
 nj=32
@@ -25,7 +25,7 @@ raw_data=/data/nas/ASR_Datasets/data_aishell/
 #data_url=www.openslr.org/resources/33s
 
 # exp tag
-tag="Whole"
+tag="Whole_withAR_prompt"
 workspace=`pwd`
 
 master_port=12345
@@ -116,6 +116,12 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   log_file="${exp_dir}/exp/${model_dir}/train.log.txt.${current_time}"
   echo "log_file: ${log_file}"
 
+  # some configurations
+  token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/tokens.txt
+  # dialect information
+  add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+  text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+
   export CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
   gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
   torchrun \
@@ -125,9 +131,11 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   ../../../funasr/bin/train.py \
   --config-path "${workspace}/conf" \
   --config-name "${config}" \
-  ++train_data_set_list="${feats_dir}/data/${train_set}/audio_datasets.jsonl" \
-  ++valid_data_set_list="${feats_dir}/data/${valid_set}/audio_datasets.jsonl" \
+  ++train_data_set_list="${feats_dir}/data2/${train_set}/audio_datasets.jsonl" \
+  ++valid_data_set_list="${feats_dir}/data2/${valid_set}/audio_datasets.jsonl" \
+  ++text_language_vocab_path=${text_language_vocab_path} \
   ++tokenizer_conf.token_list="${token_list}" \
+  ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
   ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
   ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
 fi

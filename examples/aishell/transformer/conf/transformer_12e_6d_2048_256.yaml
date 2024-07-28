@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: Transformer
+model: ArTransformer
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option

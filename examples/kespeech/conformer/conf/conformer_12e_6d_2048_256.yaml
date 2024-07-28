@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: Conformer
+model: ArConformer
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -75,7 +75,7 @@ train_conf:
   grad_clip: 5
   max_epoch: 60
   keep_nbest_models: 10
-  log_interval: 50
+  log_interval: 150
 
 optim: adam
 optim_conf:
@@ -84,7 +84,21 @@ scheduler: warmuplr
 scheduler_conf:
    warmup_steps: 30000
 
-dataset: AudioDataset
+#dataset: AudioDataset
+#dataset_conf:
+#    index_ds: IndexDSJsonl
+#    batch_sampler: EspnetStyleBatchSampler
+#    batch_type: example # example or length
+#    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+#    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
+#    buffer_size: 1024
+#    shuffle: True
+#    num_workers: 4
+#    preprocessor_speech: SpeechPreprocessSpeedPerturb
+#    preprocessor_speech_conf:
+#      speed_perturb: [0.9, 1.0, 1.1]
+
+dataset: AudioWithDialectDataset
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
