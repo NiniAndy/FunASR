@@ -431,11 +431,17 @@ class ArTransformer(nn.Module):
         if isinstance(encoder_out, tuple):
             encoder_out = encoder_out[0]
 
+        # 获取口音标签
+        text_language = kwargs["text_language"][0]
+        init_sos = tokenizer.token2id.get(text_language, self.sos)
+        beam_search_dict = {'init_sos': init_sos}
+
         # c. Passed the encoder result and the beam search
         nbest_hyps = self.beam_search(
             x=encoder_out[0],
             maxlenratio=kwargs.get("maxlenratio", 0.0),
             minlenratio=kwargs.get("minlenratio", 0.0),
+            **beam_search_dict
         )
 
         nbest_hyps = nbest_hyps[: self.nbest]

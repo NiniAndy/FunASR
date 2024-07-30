@@ -37,10 +37,11 @@ except:
     pass
 
 
-def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None):
+def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None, other_items=None):
     """ """
     data_list = []
     key_list = []
+    other_items_list = []
     filelist = [".scp", ".txt", ".json", ".jsonl", ".text"]
 
     chars = string.ascii_letters + string.digits
@@ -59,26 +60,38 @@ def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None):
                     key = "rand_key_" + "".join(random.choice(chars) for _ in range(13))
                     if data_in.endswith(".jsonl"):  # file.jsonl: json.dumps({"source": data})
                         lines = json.loads(line.strip())
-                        data = lines["source"]
-                        key = data["key"] if "key" in data else key
+                        # data = lines["source"]
+                        # key = data["key"] if "key" in data else key
+                        other_items = {}
+                        for k, v in lines.items():
+                            if k == "source":
+                                data = v
+                            elif k == "key":
+                                key = v
+                            else:
+                                other_items[k] = v
+
                     else:  # filelist, wav.scp, text.txt: id \t data or data
                         lines = line.strip().split(maxsplit=1)
                         data = lines[1] if len(lines) > 1 else lines[0]
                         key = lines[0] if len(lines) > 1 else key
+                        other_items = {}
 
                     data_list.append(data)
                     key_list.append(key)
+                    other_items_list.append(other_items)
         else:
             if key is None:
                 # key = "rand_key_" + "".join(random.choice(chars) for _ in range(13))
                 key = misc.extract_filename_without_extension(data_in)
             data_list = [data_in]
             key_list = [key]
+
     elif isinstance(data_in, (list, tuple)):
         if data_type is not None and isinstance(data_type, (list, tuple)):  # mutiple inputs
             data_list_tmp = []
             for data_in_i, data_type_i in zip(data_in, data_type):
-                key_list, data_list_i = prepare_data_iterator(
+                key_list, data_list_i, _ = prepare_data_iterator(
                     data_in=data_in_i, data_type=data_type_i
                 )
                 data_list_tmp.append(data_list_i)
@@ -105,7 +118,7 @@ def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None):
         data_list = [data_in]
         key_list = [key]
 
-    return key_list, data_list
+    return key_list, data_list, other_items_list
 
 
 class AutoModel:
@@ -287,7 +300,7 @@ class AutoModel:
         # if kwargs.get("device", "cpu") == "cpu":
         #     batch_size = 1
 
-        key_list, data_list = prepare_data_iterator(
+        key_list, data_list, other_items_list = prepare_data_iterator(
             input, input_len=input_len, data_type=kwargs.get("data_type", None), key=key
         )
 
@@ -304,7 +317,19 @@ class AutoModel:
             end_idx = min(num_samples, beg_idx + batch_size)
             data_batch = data_list[beg_idx:end_idx]
             key_batch = key_list[beg_idx:end_idx]
+            other_items_batch = other_items_list[beg_idx:end_idx]
+            # 初始化 batch 字典
             batch = {"data_in": data_batch, "key": key_batch}
+
+            # 将 other_items_batch 中的字典内容合并到 batch 中
+            for item in other_items_batch:
+                for k, v in item.items():
+                    if k in batch:
+                        if not isinstance(batch[k], list):
+                            batch[k] = [batch[k]]
+                        batch[k].append(v)
+                    else:
+                        batch[k] = [v]
 
             if (end_idx - beg_idx) == 1 and kwargs.get("data_type", None) == "fbank":  # fbank
                 batch["data_in"] = data_batch[0]

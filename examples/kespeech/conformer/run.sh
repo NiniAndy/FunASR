@@ -8,15 +8,15 @@ feats_dir="../DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=4
-stop_stage=4
+stage=5
+stop_stage=5
 
 # feature configuration
 nj=32
 
 inference_device="cuda" #"cpu", "cuda:0", "cuda:1"
 inference_checkpoint="model.pt.avg10"
-inference_scp="wav.scp"
+inference_scp="audio_datasets.jsonl"
 inference_batch_size=1
 
 # data
@@ -41,7 +41,7 @@ set -o pipefail
 
 train_set=WD/train
 valid_set=WD/dev
-# test_sets=WD/test
+#test_sets=WD/test
 test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test"
 
 
@@ -136,7 +136,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   ++text_language_vocab_path=${text_language_vocab_path} \
   ++tokenizer_conf.token_list="${token_list}" \
   ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
-  ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
+  ++frontend_conf.cmvn_file="${feats_dir}/data2/${train_set}/am.mvn" \
   ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
 fi
 
@@ -163,14 +163,22 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     echo "inference_dir: ${inference_dir}"
 
     mkdir -p "${_logdir}"
-    data_dir="${feats_dir}/data/${dset}"
+    data_dir="${feats_dir}/data2/${dset}"
     key_file=${data_dir}/${inference_scp}
+
+    file_ext="${key_file##*.}"
 
     split_scps=
     for JOB in $(seq "${nj}"); do
-        split_scps+=" ${_logdir}/keys.${JOB}.scp"
+        split_scps+=" ${_logdir}/keys.${JOB}.${file_ext}"
     done
     utils/split_scp.pl "${key_file}" ${split_scps}
+
+    # some configurations
+    token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/tokens.txt
+    # dialect information
+    add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+    text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
 
     gpuid_list_array=(${CUDA_VISIBLE_DEVICES//,/ })
     for JOB in $(seq ${nj}); do
@@ -184,8 +192,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           --config-name="config.yaml" \
           ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
           ++tokenizer_conf.token_list="${token_list}" \
-          ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
-          ++input="${_logdir}/keys.${JOB}.scp" \
+          ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
+          ++text_language_vocab_path=${text_language_vocab_path} \
+          ++frontend_conf.cmvn_file="${feats_dir}/data2/${train_set}/am.mvn" \
+          ++input="${_logdir}/keys.${JOB}.${file_ext}" \
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \
           ++ncpu=1 \
