@@ -1,6 +1,16 @@
 # K-means特征提取器
 
+要求的环境：  
+```angular2html
+fairseq                       0.12.2
+npy-append-array              0.9.16
+yacs                          0.1.8
+```
+
+[Hubert下载]: https://github.com/facebookresearch/fairseq/tree/main/examples/hubert
+
 请按以下步骤完成：
+
 1. feature extraction
 2. k-means clustering
 3. k-means application
