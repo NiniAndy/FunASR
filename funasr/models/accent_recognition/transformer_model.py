@@ -18,10 +18,12 @@ from funasr.utils import postprocess_utils
 from funasr.utils.datadir_writer import DatadirWriter
 from funasr.register import tables
 
+from funasr.models.transformer.utils.subsampling import HubertFeatureEncoder
 
-@tables.register("model_classes", "ArTransformer")
-class ArTransformer(nn.Module):
-    """带有AR的asr"""
+
+@tables.register("model_classes", "TransformerAr")
+class TransformerAr(nn.Module):
+    """识别口音"""
 
     def __init__(
         self,
@@ -61,12 +63,16 @@ class ArTransformer(nn.Module):
         if specaug is not None:
             specaug_class = tables.specaug_classes.get(specaug)
             specaug = specaug_class(**specaug_conf)
+
         if normalize is not None:
             normalize_class = tables.normalize_classes.get(normalize)
             normalize = normalize_class(**normalize_conf)
+
         encoder_class = tables.encoder_classes.get(encoder)
         encoder = encoder_class(input_size=input_size, **encoder_conf)
         encoder_output_size = encoder.output_size()
+
+
         if decoder is not None:
             decoder_class = tables.decoder_classes.get(decoder)
             decoder = decoder_class(
@@ -74,6 +80,7 @@ class ArTransformer(nn.Module):
                 encoder_output_size=encoder_output_size,
                 **decoder_conf,
             )
+
         if ctc_weight > 0.0:
 
             if ctc_conf is None:
@@ -256,21 +263,34 @@ class ArTransformer(nn.Module):
         """
         with autocast(False):
 
-            # Data augmentation
-            if self.specaug is not None and self.training:
+            # 如果encoder的embed是Hubert/Wav2Vec2的embed则需要先进行cnn再做增强
+            if isinstance(self.encoder.embed, HubertFeatureEncoder):
+                speech = speech.transpose(1, 2)
+                speech, speech_lengths = self.encoder.feature_extractor_forward(speech, speech_lengths)
+                speech, pos_emb = speech
                 speech, speech_lengths = self.specaug(speech, speech_lengths)
+                speech = (speech, pos_emb)
+                if self.encoder.interctc_use_conditioning:
+                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths, ctc=self.ctc)
+                else:
+                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths)
+            else:
+                # Data augmentation
+                if self.specaug is not None and self.training:
+                    speech, speech_lengths = self.specaug(speech, speech_lengths)
 
-            # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
-            if self.normalize is not None:
-                speech, speech_lengths = self.normalize(speech, speech_lengths)
+                # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
+                if self.normalize is not None:
+                    speech, speech_lengths = self.normalize(speech, speech_lengths)
 
-        # Forward encoder
-        # feats: (Batch, Length, Dim)
-        # -> encoder_out: (Batch, Length2, Dim2)
-        if self.encoder.interctc_use_conditioning:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
-        else:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
+                # Forward encoder
+                # feats: (Batch, Length, Dim)
+                # -> encoder_out: (Batch, Length2, Dim2)
+                if self.encoder.interctc_use_conditioning:
+                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
+                else:
+                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
+
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]

@@ -45,6 +45,7 @@ class SpecAug(AbsSpecAug):
             time_mask_width_ratio_range: Optional[Union[float, Sequence[float]]] = None,
             num_time_mask: int = 2,
     ):
+        super(SpecAug, self).__init__()
         if not apply_time_warp and not apply_time_mask and not apply_freq_mask:
             raise ValueError(
                 "Either one of time_warp, time_mask, or freq_mask should be applied"
@@ -420,3 +421,10 @@ class TimeWarp(torch.nn.Module):
         return y, x_lengths
 
 
+class wav2vec2_SpecAug(SpecAug):
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)

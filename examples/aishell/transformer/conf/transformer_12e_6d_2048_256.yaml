@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: ArTransformer
+model: Transformer
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -74,35 +74,16 @@ train_conf:
 optim: adam
 optim_conf:
    lr: 0.002
-# scheduler: warmuplr
-# scheduler_conf:
-#    warmup_steps: 30000
-scheduler: partition_warmuplr
+scheduler: warmuplr
 scheduler_conf:
    warmup_steps: 30000
-   enable_warmup: [False, True]
 
-
-#dataset: AudioDataset
-#dataset_conf:
-#    index_ds: IndexDSJsonl
-#    batch_sampler: EspnetStyleBatchSampler
-#    batch_type: length # example or length
-#    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
-#    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
-#    buffer_size: 1024
-#    shuffle: True
-#    num_workers: 4
-#    preprocessor_speech: SpeechPreprocessSpeedPerturb
-#    preprocessor_speech_conf:
-#      speed_perturb: [0.9, 1.0, 1.1]
-
-dataset: AudioWithDialectDataset
+dataset: AudioDataset
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
-    batch_type: length # example or length
-    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_type: example # example or length
+    batch_size: 24 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True
@@ -117,7 +98,7 @@ tokenizer_conf:
 
 ctc_conf:
     dropout_rate: 0.0
-    ctc_type: builtin
+    ctc_type: wenetctc
     reduce: true
     ignore_nan_grad: true
 normalize: null

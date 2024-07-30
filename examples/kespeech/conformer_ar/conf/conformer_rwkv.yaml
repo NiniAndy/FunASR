@@ -32,7 +32,7 @@ encoder_conf:
     cnn_module_kernel: 15
 
 # decoder
-decoder: TransformerDecoder
+decoder: TransformerRWKVDecoder
 decoder_conf:
     attention_heads: 4
     linear_units: 2048
@@ -41,6 +41,20 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
+    input_layer: embed
+    rwkv_cfg:
+      n_embd: 256
+      dropout: 0
+      head_size_a: 64
+      ctx_len: 512
+      dim_att: 256 #${model_conf.rwkv_cfg.n_embd}
+      dim_ffn: null
+      head_size_divisor: 4
+      n_layer: 6
+      pre_ffn: 0
+      ln0: false
+      ln1: false
+      init_rwkv: true
 
 
 # frontend related
@@ -73,9 +87,9 @@ specaug_conf:
 train_conf:
   accum_grad: 1
   grad_clip: 5
-  max_epoch: 60
+  max_epoch: 150
   keep_nbest_models: 10
-  log_interval: 150
+  log_interval: 50
 
 optim: adam
 optim_conf:
@@ -84,26 +98,12 @@ scheduler: warmuplr
 scheduler_conf:
    warmup_steps: 30000
 
-#dataset: AudioDataset
-#dataset_conf:
-#    index_ds: IndexDSJsonl
-#    batch_sampler: EspnetStyleBatchSampler
-#    batch_type: example # example or length
-#    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
-#    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
-#    buffer_size: 1024
-#    shuffle: True
-#    num_workers: 4
-#    preprocessor_speech: SpeechPreprocessSpeedPerturb
-#    preprocessor_speech_conf:
-#      speed_perturb: [0.9, 1.0, 1.1]
-
-dataset: AudioWithDialectDataset
+dataset: AudioDataset
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
-    batch_type: example # example or length
-    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_type: length # example or length
+    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

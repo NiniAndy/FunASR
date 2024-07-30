@@ -213,6 +213,7 @@ class TransformerEncoder(nn.Module):
                 self.embed = torch.nn.Linear(input_size, output_size)
         else:
             raise ValueError("unknown input_layer: " + input_layer)
+
         self.normalize_before = normalize_before
         if positionwise_layer_type == "linear":
             positionwise_layer = PositionwiseFeedForward

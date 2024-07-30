@@ -3,6 +3,7 @@
 from typing import Optional
 from typing import Sequence
 from typing import Union
+import random
 
 from funasr.models.specaug.mask_along_axis import MaskAlongAxis
 from funasr.models.specaug.mask_along_axis import MaskAlongAxisVariableMaxWidth
@@ -11,6 +12,7 @@ from funasr.models.specaug.time_warp import TimeWarp
 from funasr.register import tables
 
 import torch.nn as nn
+import ast
 
 
 @tables.register("specaug_classes", "SpecAug")
@@ -184,3 +186,60 @@ class SpecAugLFR(nn.Module):
         if self.time_mask is not None:
             x, x_lengths = self.time_mask(x, x_lengths)
         return x, x_lengths
+
+
+
+@tables.register("specaug_classes", "SpecAugWav2Vec2")
+class SpecAugWav2Vec2(nn.Module):
+    """和wav2vec2相似的谱增强方法"""
+
+    def __init__(
+            self,
+            use_spec_augment: bool = False,
+            spec_augment_prob: float = 0.3,
+            apply_time_warp: bool = True,
+            time_warp_window: int = 80,
+            time_warp_mode: str = "bicubic",
+            apply_freq_mask: bool = True,
+            freq_mask_width_range: Union[int, Sequence[int]] = (0, 100),
+            num_freq_mask: int = 2,
+            apply_time_mask: bool = True,
+            time_mask_width_range: Optional[Union[int, Sequence[int]]] = (0, 5),
+            time_mask_width_ratio_range: Optional[Union[float, Sequence[float]]] = (0, 0.1),
+            num_time_mask: int = 2,
+    ):
+        super(SpecAugWav2Vec2, self).__init__()
+        self.spec_augment_prob = spec_augment_prob
+
+        if freq_mask_width_range is not None:
+            freq_mask_width_range = ast.literal_eval(freq_mask_width_range)
+        if time_mask_width_range is not None:
+            time_mask_width_range = ast.literal_eval(time_mask_width_range)
+        if time_mask_width_ratio_range is not None:
+            time_mask_width_ratio_range = ast.literal_eval(time_mask_width_ratio_range)
+
+        if use_spec_augment:
+            from funasr.models.pretrain_asr.spec_augment import wav2vec2_SpecAug
+            self.spec_augment = wav2vec2_SpecAug(
+                apply_time_warp,
+                time_warp_window,
+                time_warp_mode,
+                apply_freq_mask,
+                freq_mask_width_range,
+                num_freq_mask,
+                apply_time_mask,
+                time_mask_width_range,
+                time_mask_width_ratio_range,
+                num_time_mask,
+            )
+        else:
+            self.spec_augment = None
+
+    def forward(self, x, x_lengths=None):
+        if random.random() < self.spec_augment_prob and self.spec_augment is not None:
+            x, x_lengths = self.spec_augment(x)
+        return x, x_lengths
+
+
+
+

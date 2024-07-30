@@ -24,30 +24,30 @@ from funasr.models.transformer.embedding import (
     StreamingRelPositionalEncoding,
 )
 from funasr.models.transformer.layer_norm import LayerNorm
+from funasr.models.transformer.positionwise_feed_forward import (
+    PositionwiseFeedForward,  # noqa: H301
+)
 from funasr.models.transformer.utils.multi_layer_conv import Conv1dLinear
 from funasr.models.transformer.utils.multi_layer_conv import MultiLayeredConv1d
-from funasr.models.transformer.utils.nets_utils import get_activation
-from funasr.models.transformer.utils.nets_utils import make_pad_mask
 from funasr.models.transformer.utils.nets_utils import (
     TooShortUttError,
     check_short_utt,
     make_chunk_mask,
     make_source_mask,
 )
-from funasr.models.transformer.positionwise_feed_forward import (
-    PositionwiseFeedForward,  # noqa: H301
-)
+from funasr.models.transformer.utils.nets_utils import get_activation
+from funasr.models.transformer.utils.nets_utils import make_pad_mask
 from funasr.models.transformer.utils.repeat import repeat, MultiBlocks
 from funasr.models.transformer.utils.subsampling import Conv2dSubsampling
 from funasr.models.transformer.utils.subsampling import Conv2dSubsampling2
 from funasr.models.transformer.utils.subsampling import Conv2dSubsampling6
 from funasr.models.transformer.utils.subsampling import Conv2dSubsampling8
+from funasr.models.transformer.utils.subsampling import Conv2dSubsamplingPad
+from funasr.models.transformer.utils.subsampling import HubertFeatureEncoder
+from funasr.models.transformer.utils.subsampling import StreamingConvInput
 from funasr.models.transformer.utils.subsampling import TooShortUttError
 from funasr.models.transformer.utils.subsampling import check_short_utt
-from funasr.models.transformer.utils.subsampling import Conv2dSubsamplingPad
-from funasr.models.transformer.utils.subsampling import StreamingConvInput
 from funasr.register import tables
-import pdb
 
 
 class ConvolutionModule(nn.Module):
@@ -147,16 +147,16 @@ class EncoderLayer(nn.Module):
     """
 
     def __init__(
-        self,
-        size,
-        self_attn,
-        feed_forward,
-        feed_forward_macaron,
-        conv_module,
-        dropout_rate,
-        normalize_before=True,
-        concat_after=False,
-        stochastic_depth_rate=0.0,
+            self,
+            size,
+            self_attn,
+            feed_forward,
+            feed_forward_macaron,
+            conv_module,
+            dropout_rate,
+            normalize_before=True,
+            concat_after=False,
+            stochastic_depth_rate=0.0,
     ):
         """Construct an EncoderLayer object."""
         super(EncoderLayer, self).__init__()
@@ -320,32 +320,33 @@ class ConformerEncoder(nn.Module):
     """
 
     def __init__(
-        self,
-        input_size: int,
-        output_size: int = 256,
-        attention_heads: int = 4,
-        linear_units: int = 2048,
-        num_blocks: int = 6,
-        dropout_rate: float = 0.1,
-        positional_dropout_rate: float = 0.1,
-        attention_dropout_rate: float = 0.0,
-        input_layer: str = "conv2d",
-        normalize_before: bool = True,
-        concat_after: bool = False,
-        positionwise_layer_type: str = "linear",
-        positionwise_conv_kernel_size: int = 3,
-        macaron_style: bool = False,
-        rel_pos_type: str = "legacy",
-        pos_enc_layer_type: str = "rel_pos",
-        selfattention_layer_type: str = "rel_selfattn",
-        activation_type: str = "swish",
-        use_cnn_module: bool = True,
-        zero_triu: bool = False,
-        cnn_module_kernel: int = 31,
-        padding_idx: int = -1,
-        interctc_layer_idx: List[int] = [],
-        interctc_use_conditioning: bool = False,
-        stochastic_depth_rate: Union[float, List[float]] = 0.0,
+            self,
+            input_size: int,
+            output_size: int = 256,
+            attention_heads: int = 4,
+            linear_units: int = 2048,
+            num_blocks: int = 6,
+            dropout_rate: float = 0.1,
+            positional_dropout_rate: float = 0.1,
+            attention_dropout_rate: float = 0.0,
+            input_layer: str = "conv2d",
+            normalize_before: bool = True,
+            concat_after: bool = False,
+            positionwise_layer_type: str = "linear",
+            positionwise_conv_kernel_size: int = 3,
+            macaron_style: bool = False,
+            rel_pos_type: str = "legacy",
+            pos_enc_layer_type: str = "rel_pos",
+            selfattention_layer_type: str = "rel_selfattn",
+            activation_type: str = "swish",
+            use_cnn_module: bool = True,
+            zero_triu: bool = False,
+            cnn_module_kernel: int = 31,
+            padding_idx: int = -1,
+            interctc_layer_idx: List[int] = [],
+            interctc_use_conditioning: bool = False,
+            stochastic_depth_rate: Union[float, List[float]] = 0.0,
+            **kwargs,
     ):
         super().__init__()
         self._output_size = output_size
@@ -423,6 +424,16 @@ class ConformerEncoder(nn.Module):
                 torch.nn.Embedding(input_size, output_size, padding_idx=padding_idx),
                 pos_enc_class(output_size, positional_dropout_rate),
             )
+        elif input_layer == "hubert":
+            conv_conf = kwargs["conv_conf"]
+            feat_extract_conf = kwargs["feat_extract_conf"]
+            self.embed = HubertFeatureEncoder(
+                output_size,
+                dropout_rate,
+                conv_conf,
+                feat_extract_conf,
+                pos_enc_class(output_size, positional_dropout_rate)
+            )
         elif isinstance(input_layer, torch.nn.Module):
             self.embed = torch.nn.Sequential(
                 input_layer,
@@ -432,6 +443,7 @@ class ConformerEncoder(nn.Module):
             self.embed = torch.nn.Sequential(pos_enc_class(output_size, positional_dropout_rate))
         else:
             raise ValueError("unknown input_layer: " + input_layer)
+
         self.normalize_before = normalize_before
         if positionwise_layer_type == "linear":
             positionwise_layer = PositionwiseFeedForward
@@ -526,13 +538,74 @@ class ConformerEncoder(nn.Module):
     def output_size(self) -> int:
         return self._output_size
 
+    def feature_extractor_forward(self, xs_pad: torch.Tensor, ilens: torch.Tensor):
+        if isinstance(self.embed, HubertFeatureEncoder):
+            xs_pad, ilens = self.embed(xs_pad, ilens)
+        else:
+            raise NotImplementedError("Support only HubertFeatureEncoder/Wav2VecFeatureEncoder.")
+        return xs_pad, ilens
+
+    def encoder_forward(
+            self,
+            xs_pad: torch.Tensor,
+            ilens: torch.Tensor,
+            prev_states: torch.Tensor = None,
+            ctc: CTC = None, ):
+        '''
+        为使用了和wav2vec2类似的特征提取器的模型提供的encoder_forward方法
+        '''
+
+        if not isinstance(self.embed, HubertFeatureEncoder):
+            raise NotImplementedError("Support only HubertFeatureEncoder/Wav2VecFeatureEncoder.")
+
+        masks = (~make_pad_mask(ilens)[:, None, :]).to(xs_pad[0].device)
+
+        intermediate_outs = []
+        if len(self.interctc_layer_idx) == 0:
+            xs_pad, masks = self.encoders(xs_pad, masks)
+        else:
+            for layer_idx, encoder_layer in enumerate(self.encoders):
+                xs_pad, masks = encoder_layer(xs_pad, masks)
+
+                if layer_idx + 1 in self.interctc_layer_idx:
+                    encoder_out = xs_pad
+                    if isinstance(encoder_out, tuple):
+                        encoder_out = encoder_out[0]
+
+                    # intermediate outputs are also normalized
+                    if self.normalize_before:
+                        encoder_out = self.after_norm(encoder_out)
+
+                    intermediate_outs.append((layer_idx + 1, encoder_out))
+
+                    if self.interctc_use_conditioning:
+                        ctc_out = ctc.softmax(encoder_out)
+
+                        if isinstance(xs_pad, tuple):
+                            x, pos_emb = xs_pad
+                            x = x + self.conditioning_layer(ctc_out)
+                            xs_pad = (x, pos_emb)
+                        else:
+                            xs_pad = xs_pad + self.conditioning_layer(ctc_out)
+
+        if isinstance(xs_pad, tuple):
+            xs_pad = xs_pad[0]
+        if self.normalize_before:
+            xs_pad = self.after_norm(xs_pad)
+
+        olens = masks.squeeze(1).sum(1)
+        if len(intermediate_outs) > 0:
+            return (xs_pad, intermediate_outs), olens, None
+        return xs_pad, olens, None
+
+
     def forward(
-        self,
-        xs_pad: torch.Tensor,
-        ilens: torch.Tensor,
-        prev_states: torch.Tensor = None,
-        ctc: CTC = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+            self,
+            xs_pad: torch.Tensor,
+            ilens: torch.Tensor,
+            prev_states: torch.Tensor = None,
+            ctc: CTC = None,
+    ):
         """Calculate forward propagation.
 
         Args:
@@ -549,12 +622,13 @@ class ConformerEncoder(nn.Module):
         masks = (~make_pad_mask(ilens)[:, None, :]).to(xs_pad.device)
 
         if (
-            isinstance(self.embed, Conv2dSubsampling)
-            or isinstance(self.embed, Conv2dSubsampling2)
-            or isinstance(self.embed, Conv2dSubsampling6)
-            or isinstance(self.embed, Conv2dSubsampling8)
-            or isinstance(self.embed, Conv2dSubsamplingPad)
+                isinstance(self.embed, Conv2dSubsampling)
+                or isinstance(self.embed, Conv2dSubsampling2)
+                or isinstance(self.embed, Conv2dSubsampling6)
+                or isinstance(self.embed, Conv2dSubsampling8)
+                or isinstance(self.embed, Conv2dSubsamplingPad)
         ):
+
             short_status, limit_size = check_short_utt(self.embed, xs_pad.size(1))
             if short_status:
                 raise TooShortUttError(
@@ -617,12 +691,12 @@ class CausalConvolution(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        channels: int,
-        kernel_size: int,
-        activation: torch.nn.Module = torch.nn.ReLU(),
-        norm_args: Dict = {},
-        causal: bool = False,
+            self,
+            channels: int,
+            kernel_size: int,
+            activation: torch.nn.Module = torch.nn.ReLU(),
+            norm_args: Dict = {},
+            causal: bool = False,
     ) -> None:
         """Construct an ConformerConvolution object."""
         super().__init__()
@@ -666,10 +740,10 @@ class CausalConvolution(torch.nn.Module):
         self.activation = activation
 
     def forward(
-        self,
-        x: torch.Tensor,
-        cache: Optional[torch.Tensor] = None,
-        right_context: int = 0,
+            self,
+            x: torch.Tensor,
+            cache: Optional[torch.Tensor] = None,
+            right_context: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Compute convolution module.
         Args:
@@ -690,9 +764,9 @@ class CausalConvolution(torch.nn.Module):
                 x = torch.cat([cache, x], dim=2)
 
                 if right_context > 0:
-                    cache = x[:, :, -(self.lorder + right_context) : -right_context]
+                    cache = x[:, :, -(self.lorder + right_context): -right_context]
                 else:
-                    cache = x[:, :, -self.lorder :]
+                    cache = x[:, :, -self.lorder:]
 
         x = self.depthwise_conv(x)
         x = self.activation(self.norm(x))
@@ -716,15 +790,15 @@ class ChunkEncoderLayer(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        block_size: int,
-        self_att: torch.nn.Module,
-        feed_forward: torch.nn.Module,
-        feed_forward_macaron: torch.nn.Module,
-        conv_mod: torch.nn.Module,
-        norm_class: torch.nn.Module = LayerNorm,
-        norm_args: Dict = {},
-        dropout_rate: float = 0.0,
+            self,
+            block_size: int,
+            self_att: torch.nn.Module,
+            feed_forward: torch.nn.Module,
+            feed_forward_macaron: torch.nn.Module,
+            conv_mod: torch.nn.Module,
+            norm_class: torch.nn.Module = LayerNorm,
+            norm_args: Dict = {},
+            dropout_rate: float = 0.0,
     ) -> None:
         """Construct a Conformer object."""
         super().__init__()
@@ -771,11 +845,11 @@ class ChunkEncoderLayer(torch.nn.Module):
         ]
 
     def forward(
-        self,
-        x: torch.Tensor,
-        pos_enc: torch.Tensor,
-        mask: torch.Tensor,
-        chunk_mask: Optional[torch.Tensor] = None,
+            self,
+            x: torch.Tensor,
+            pos_enc: torch.Tensor,
+            mask: torch.Tensor,
+            chunk_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Encode input sequences.
         Args:
@@ -821,13 +895,13 @@ class ChunkEncoderLayer(torch.nn.Module):
         return x, mask, pos_enc
 
     def chunk_forward(
-        self,
-        x: torch.Tensor,
-        pos_enc: torch.Tensor,
-        mask: torch.Tensor,
-        chunk_size: int = 16,
-        left_context: int = 0,
-        right_context: int = 0,
+            self,
+            x: torch.Tensor,
+            pos_enc: torch.Tensor,
+            mask: torch.Tensor,
+            chunk_size: int = 16,
+            left_context: int = 0,
+            right_context: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Encode chunk of input sequence.
         Args:
@@ -854,7 +928,7 @@ class ChunkEncoderLayer(torch.nn.Module):
         val = key
 
         if right_context > 0:
-            att_cache = key[:, -(left_context + right_context) : -right_context, :]
+            att_cache = key[:, -(left_context + right_context): -right_context, :]
         else:
             att_cache = key[:, -left_context:, :]
         x = residual + self.self_att(
@@ -892,41 +966,41 @@ class ConformerChunkEncoder(torch.nn.Module):
     """
 
     def __init__(
-        self,
-        input_size: int,
-        output_size: int = 256,
-        attention_heads: int = 4,
-        linear_units: int = 2048,
-        num_blocks: int = 6,
-        dropout_rate: float = 0.1,
-        positional_dropout_rate: float = 0.1,
-        attention_dropout_rate: float = 0.0,
-        embed_vgg_like: bool = False,
-        normalize_before: bool = True,
-        concat_after: bool = False,
-        positionwise_layer_type: str = "linear",
-        positionwise_conv_kernel_size: int = 3,
-        macaron_style: bool = False,
-        rel_pos_type: str = "legacy",
-        pos_enc_layer_type: str = "rel_pos",
-        selfattention_layer_type: str = "rel_selfattn",
-        activation_type: str = "swish",
-        use_cnn_module: bool = True,
-        zero_triu: bool = False,
-        norm_type: str = "layer_norm",
-        cnn_module_kernel: int = 31,
-        conv_mod_norm_eps: float = 0.00001,
-        conv_mod_norm_momentum: float = 0.1,
-        simplified_att_score: bool = False,
-        dynamic_chunk_training: bool = False,
-        short_chunk_threshold: float = 0.75,
-        short_chunk_size: int = 25,
-        left_chunk_size: int = 0,
-        time_reduction_factor: int = 1,
-        unified_model_training: bool = False,
-        default_chunk_size: int = 16,
-        jitter_range: int = 4,
-        subsampling_factor: int = 1,
+            self,
+            input_size: int,
+            output_size: int = 256,
+            attention_heads: int = 4,
+            linear_units: int = 2048,
+            num_blocks: int = 6,
+            dropout_rate: float = 0.1,
+            positional_dropout_rate: float = 0.1,
+            attention_dropout_rate: float = 0.0,
+            embed_vgg_like: bool = False,
+            normalize_before: bool = True,
+            concat_after: bool = False,
+            positionwise_layer_type: str = "linear",
+            positionwise_conv_kernel_size: int = 3,
+            macaron_style: bool = False,
+            rel_pos_type: str = "legacy",
+            pos_enc_layer_type: str = "rel_pos",
+            selfattention_layer_type: str = "rel_selfattn",
+            activation_type: str = "swish",
+            use_cnn_module: bool = True,
+            zero_triu: bool = False,
+            norm_type: str = "layer_norm",
+            cnn_module_kernel: int = 31,
+            conv_mod_norm_eps: float = 0.00001,
+            conv_mod_norm_momentum: float = 0.1,
+            simplified_att_score: bool = False,
+            dynamic_chunk_training: bool = False,
+            short_chunk_threshold: float = 0.75,
+            short_chunk_size: int = 25,
+            left_chunk_size: int = 0,
+            time_reduction_factor: int = 1,
+            unified_model_training: bool = False,
+            default_chunk_size: int = 16,
+            jitter_range: int = 4,
+            subsampling_factor: int = 1,
     ) -> None:
         """Construct an Encoder object."""
         super().__init__()
@@ -1036,9 +1110,9 @@ class ConformerChunkEncoder(torch.nn.Module):
         return self.encoders.reset_streaming_cache(left_context, device)
 
     def forward(
-        self,
-        x: torch.Tensor,
-        x_len: torch.Tensor,
+            self,
+            x: torch.Tensor,
+            x_len: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Encode input sequences.
         Args:
@@ -1063,8 +1137,8 @@ class ConformerChunkEncoder(torch.nn.Module):
         if self.unified_model_training:
             if self.training:
                 chunk_size = (
-                    self.default_chunk_size
-                    + torch.randint(-self.jitter_range, self.jitter_range + 1, (1,)).item()
+                        self.default_chunk_size
+                        + torch.randint(-self.jitter_range, self.jitter_range + 1, (1,)).item()
                 )
             else:
                 chunk_size = self.default_chunk_size
@@ -1137,9 +1211,9 @@ class ConformerChunkEncoder(torch.nn.Module):
         return x, olens, None
 
     def full_utt_forward(
-        self,
-        x: torch.Tensor,
-        x_len: torch.Tensor,
+            self,
+            x: torch.Tensor,
+            x_len: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Encode input sequences.
         Args:
@@ -1174,12 +1248,12 @@ class ConformerChunkEncoder(torch.nn.Module):
         return x_utt
 
     def simu_chunk_forward(
-        self,
-        x: torch.Tensor,
-        x_len: torch.Tensor,
-        chunk_size: int = 16,
-        left_context: int = 32,
-        right_context: int = 0,
+            self,
+            x: torch.Tensor,
+            x_len: torch.Tensor,
+            chunk_size: int = 16,
+            left_context: int = 32,
+            right_context: int = 0,
     ) -> torch.Tensor:
         short_status, limit_size = check_short_utt(self.embed.subsampling_factor, x.size(1))
 
@@ -1215,13 +1289,13 @@ class ConformerChunkEncoder(torch.nn.Module):
         return x
 
     def chunk_forward(
-        self,
-        x: torch.Tensor,
-        x_len: torch.Tensor,
-        processed_frames: torch.tensor,
-        chunk_size: int = 16,
-        left_context: int = 32,
-        right_context: int = 0,
+            self,
+            x: torch.Tensor,
+            x_len: torch.Tensor,
+            processed_frames: torch.tensor,
+            chunk_size: int = 16,
+            left_context: int = 32,
+            right_context: int = 0,
     ) -> torch.Tensor:
         """Encode input sequences as chunks.
         Args:

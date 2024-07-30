@@ -7,6 +7,7 @@
 """Subsampling layer definition."""
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from funasr.models.transformer.embedding import PositionalEncoding
 import logging
@@ -88,7 +89,8 @@ class Conv2dSubsampling(torch.nn.Module):
         x = x.unsqueeze(1)  # (b, c, t, f)
         x = self.conv(x)
         b, c, t, f = x.size()
-        x = self.out(x.transpose(1, 2).contiguous().view(b, t, c * f))
+        x = x.transpose(1, 2).contiguous().view(b, t, c * f)  # (b, t, n)
+        x = self.out(x)
         if x_mask is None:
             return x, None
         return x, x_mask[:, :, :-2:2][:, :, :-2:2]
@@ -370,10 +372,92 @@ class Conv1dSubsampling(torch.nn.Module):
         x = x.transpose(1, 2)  # (b, t ,d)
 
         if x_len is None:
-
             return x, None
+
         x_len = (x_len - 1) // self.stride + 1
         return x, x_len
+
+from funasr.models.transformer.utils.subsampling_utils import (
+    HubertNoLayerNormConvLayer,
+    HubertGroupNormConvLayer,
+    HubertLayerNormConvLayer,
+    HubertFeatureProjection)
+
+class HubertFeatureEncoder(nn.Module):
+    """Construct the features from raw audio waveform"""
+    def __init__(self,
+                 output_dim: int,
+                 dropout_rate: float,
+                 conv_conf: dict = {},
+                 feat_extract_conf: dict = {},
+                 pos_enc=None):
+        super().__init__()
+
+        self.right_context = 0
+        self.subsampling_rate = 2
+
+        feat_extract_norm = feat_extract_conf.get("feat_extract_norm", "group")
+        num_feat_extract_layers = feat_extract_conf.get("num_feat_extract_layers", 7)
+        conv_dim = conv_conf.get("conv_dim", [512, 512, 512, 512, 512, 512, 512])
+        last_conv_dim = conv_dim[-1]
+
+        self.conv_kernel = conv_conf.get("conv_kernel", [10, 3, 3, 3, 3, 2, 2])
+        self.conv_stride = conv_conf.get("conv_stride", [ 5, 2, 2, 2, 2, 2, 2])
+
+        if feat_extract_norm == "group":
+            conv_layers = ([HubertGroupNormConvLayer(layer_id=0, **conv_conf)] +
+                           [HubertNoLayerNormConvLayer(layer_id=i + 1, **conv_conf) for i in range(num_feat_extract_layers - 1)
+            ])
+        elif feat_extract_norm == "layer":
+            conv_layers = [HubertLayerNormConvLayer(layer_id=i, **conv_conf) for i in range(num_feat_extract_layers)]
+
+        self.conv_layers = nn.ModuleList(conv_layers)
+        self.proj_layer = HubertFeatureProjection(last_conv_dim, output_dim, **feat_extract_conf)
+
+        self.out = torch.nn.Sequential(
+            torch.nn.Linear(output_dim, output_dim),
+            pos_enc if pos_enc is not None else PositionalEncoding(output_dim, dropout_rate),
+        )
+
+
+    def _freeze_parameters(self):
+        for param in self.parameters():
+            param.requires_grad = False
+
+
+    def _get_feat_extract_output_lengths(self, input_lengths: Union[torch.LongTensor, int]):
+        """Computes the output length of the convolutional layers"""
+        def _conv_out_length(input_length, kernel_size, stride):
+            # 1D convolutional layer output length formula taken
+            # from https://pytorch.org/docs/stable/generated/torch.nn.Conv1d.html
+            return torch.div(input_length - kernel_size, stride, rounding_mode="floor") + 1
+
+        for kernel_size, stride in zip(self.conv_kernel, self.conv_stride):
+            input_lengths = _conv_out_length(input_lengths, kernel_size, stride)
+
+        return input_lengths
+
+
+    def forward(self, x, x_len):
+        """Subsample x.
+
+        Args:
+            x (torch.Tensor): Input tensor audio_signal, (batch_size, 1, seq_len)
+            x_len (torch.Tensor): Length of input audio_signal, (batch_size)
+
+        Returns:
+            torch.Tensor: Subsampled tensor (#batch, time', odim),
+                where time' = time // 320.
+            torch.Tensor: Subsampled len (#batch),
+        """
+
+        for conv_layer in self.conv_layers:
+            x = conv_layer(x)
+        x = x.transpose(1, 2)
+        x = self.proj_layer(x)  # (B, T, D)
+        x = self.out(x)
+        x_len = self._get_feat_extract_output_lengths(x_len)
+        return x,  x_len
 
 
 class StreamingConvInput(torch.nn.Module):

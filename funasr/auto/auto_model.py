@@ -112,11 +112,11 @@ class AutoModel:
 
     def __init__(self, **kwargs):
 
-        try:
-            from funasr.utils.version_checker import check_for_update
-            check_for_update(disable=kwargs.get("disable_update", False))
-        except:
-            pass
+        # try:
+        #     from funasr.utils.version_checker import check_for_update
+        #     check_for_update(disable=kwargs.get("disable_update", False))
+        # except:
+        #     pass
 
         log_level = getattr(logging, kwargs.get("log_level", "INFO").upper())
         logging.basicConfig(level=log_level)
