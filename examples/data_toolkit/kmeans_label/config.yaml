@@ -1,0 +1,30 @@
+AUDIO:
+  sample_rate: 16000
+  window_size: 0.02
+  window_stride: 0.01
+  window: hamming
+
+FEATURE:
+  spectrum_normalize: true
+  feature: fbank
+  delta_order: 2
+  num_mel_bins: 13
+  delta_window_size: 1
+
+KMEANS:
+  n_clusters: 150
+  percent: 0.3
+  max_iter: 1000
+  batch_size: 10000
+  km_path: "/ssd/zhuang/code/FunASR/examples/data_toolkit/kmeans_label/hubert_base_ls960_L9_km500.bin"
+  data_path: "/data/NAS_PLUS/zhuang/dataset/data_librispeech/data_librispeech_train.npz"
+  train_data_mfcc: "/nvme0/zhuang/data_librispeech_train_mfcc.npy"
+  train_data_mfcc_len: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/data_librispeech_train_mfcc.len"
+  dev_data_mfcc: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/data_librispeech_train_val_mfcc.npy"
+  dev_data_mfcc_len: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/data_librispeech_train_val_mfcc.len"
+  ckpt_path: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/hubert_base_ls960.pt"
+  layer: 9
+  max_chunk: 1600000
+  lab_path: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/data_librispeech_label.km"
+  dev_lab_path: "/data/NAS_PLUS/zhuang/CodeBase/008_simple_kmeans/save/data_librispeech_dve_label.km"
+  new_dataset: ""

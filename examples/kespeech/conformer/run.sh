@@ -41,8 +41,8 @@ set -o pipefail
 
 train_set=WD/train
 valid_set=WD/dev
-#test_sets=WD/test
-test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test"
+test_sets=WD/test
+#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test"
 
 
 config=conformer_12e_6d_2048_256.yaml

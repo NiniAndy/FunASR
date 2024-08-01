@@ -19,6 +19,7 @@ from funasr.utils.datadir_writer import DatadirWriter
 from funasr.register import tables
 
 from funasr.models.transformer.utils.subsampling import HubertFeatureEncoder
+from funasr.models.accent_recognition.lasas import LASAS
 
 
 @tables.register("model_classes", "TransformerAr")
@@ -106,6 +107,15 @@ class TransformerAr(nn.Module):
             if add_special_token_list:
                 self.start_id_of_special_tokens = len(token2id) - len(add_special_token_list)
 
+        # LASAS
+        lasas_conf = kwargs.get("lasas_conf", {})
+        if encoder.interctc_use_conditioning:
+            layer_combine_num = len(encoder.interctc_layer_idx)
+            lasas_input_size = encoder_output_size * layer_combine_num
+        else:
+            lasas_input_size = encoder_output_size
+        acc_num = lasas_conf.get("accent_size", 1)
+        self.lasas = LASAS(lasas_input_size, acc_num, **lasas_conf)
 
         self.vocab_size = vocab_size
         self.ignore_id = ignore_id
@@ -184,6 +194,9 @@ class TransformerAr(nn.Module):
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
+
+        # 根据encoder_out_lens随机生成spurious label
+        spurious_label = torch.randint(0, self.vocab_size, (batch_size, encoder_out_lens.max().item()), device=encoder_out.device)
 
         loss_att, acc_att, cer_att, wer_att = None, None, None, None
         loss_ctc, cer_ctc = None, None

@@ -5,15 +5,23 @@ import torch.nn.functional as F
 from speechbrain.lobes.models.ECAPA_TDNN import AttentiveStatisticsPooling
 from speechbrain.lobes.models.ECAPA_TDNN import BatchNorm1d
 
-from wenet.transformer.embedding import PositionalEncoding
-from wenet.transformer.encoder import TransformerEncoder
+from funasr.models.transformer.encoder import EncoderLayer
+from funasr.models.transformer.attention import MultiHeadedAttention
+from funasr.models.transformer.embedding import PositionalEncoding
+from funasr.models.transformer.layer_norm import LayerNorm
+from funasr.models.transformer.utils.multi_layer_conv import Conv1dLinear
+from funasr.models.transformer.utils.multi_layer_conv import MultiLayeredConv1d
+from funasr.models.transformer.utils.nets_utils import make_pad_mask
+from funasr.models.transformer.positionwise_feed_forward import PositionwiseFeedForward
+from funasr.models.transformer.utils.repeat import repeat
+
 
 class LASAS(nn.Module):
 
     def __init__(
             self,
             input_dim: int,
-            output_dim: int,
+            acc_num: int,
             spurious_label_num: int = 500,
             num_spaces:int =  8,
             loss_type: str = "amsoftmax",
@@ -21,18 +29,82 @@ class LASAS(nn.Module):
             **kwargs,
     ):
 
+        '''
+
+        Args:
+            input_dim: 输入的encoder combine的维度
+            output_dim: accent字典的维度
+            spurious_label_num: 伪标签的数量
+            num_spaces: 求相似空间的数量
+        '''
+
         super(LASAS, self).__init__()
 
         self.input_dim = input_dim
         self.embed = nn.Embedding(spurious_label_num, input_dim)
         self.lasas = LASASBlock(text_dim=input_dim, acoustic_dim=input_dim, hidden_dim=input_dim, num_spaces=num_spaces)
-        self.encoder = TransformerEncoder(input_dim, global_cmvn=None, **encoder_conf)
-        self.linear = nn.Sequential(nn.Linear(input_dim, input_dim * 2),
+
+        # Transformer encoder parameters
+        num_blocks = encoder_conf.get("num_blocks", 2)
+        output_size = encoder_conf.get("output_size", 2)
+        attention_heads = encoder_conf.get("attention_heads", 4)
+        attention_dropout_rate = encoder_conf.get("attention_dropout_rate", 0.1)
+        positionwise_layer_type = encoder_conf.get("positionwise_layer", "linear")
+        positionwise_conv_kernel_size = encoder_conf.get("positionwise_conv_kernel_size", 1)
+        linear_units = encoder_conf.get("linear_units", 2048)
+        dropout_rate = encoder_conf.get("dropout_rate", 0.1)
+        normalize_before = encoder_conf.get("normalize_before", True)
+        concat_after = encoder_conf.get("concat_after", False)
+
+        self.encoder_proj = torch.nn.Linear(input_dim, output_size)
+
+
+        if positionwise_layer_type == "linear":
+            positionwise_layer = PositionwiseFeedForward
+            positionwise_layer_args = (
+                output_size,
+                linear_units,
+                dropout_rate,
+            )
+        elif positionwise_layer_type == "conv1d":
+            positionwise_layer = MultiLayeredConv1d
+            positionwise_layer_args = (
+                output_size,
+                linear_units,
+                positionwise_conv_kernel_size,
+                dropout_rate,
+            )
+        elif positionwise_layer_type == "conv1d-linear":
+            positionwise_layer = Conv1dLinear
+            positionwise_layer_args = (
+                output_size,
+                linear_units,
+                positionwise_conv_kernel_size,
+                dropout_rate,
+            )
+        else:
+            raise NotImplementedError("Support only linear or conv1d.")
+
+        self.encoders = repeat(
+            num_blocks,
+            lambda lnum: EncoderLayer(
+                output_size,
+                MultiHeadedAttention(attention_heads, output_size, attention_dropout_rate),
+                positionwise_layer(*positionwise_layer_args),
+                dropout_rate,
+                normalize_before,
+                concat_after,
+            ),
+        )
+
+        self.linear = nn.Sequential(nn.Linear(output_size, output_size * 2),
                                     nn.Dropout(0.1),
-                                    nn.Linear(input_dim * 2, input_dim),
+                                    nn.Linear(output_size * 2, output_size),
                                     )
-        self.pooling = Pooling(input_dim = input_dim, output_dim=input_dim)
-        self.loss = LASASLoss(input_dim=input_dim, num_classes=output_dim, type=loss_type)
+        self.pooling = Pooling(input_dim = output_size, output_dim=output_size)
+        self.loss = LASASLoss(input_dim=output_size, num_classes=acc_num, type=loss_type)
+
+        self.output_size = output_size
 
 
     def forward(self, Xa, Xt, mask):
@@ -47,8 +119,7 @@ class LASAS(nn.Module):
         # 2. 将Xt和Xa转换为双模态表示
         Xbm = self.lasas(Xt, Xa, mask)
         # 3. 将Xbm输入到TransformerEncoder中
-        Xbm_len =torch.sum(mask, dim=-1).squeeze(-1)
-        Xbm, _ = self.encoder(Xbm, Xbm_len) # [batch_size,seq_len, hidden_dim]
+        Xbm, _ = self.encoder(Xbm, mask) # [batch_size,seq_len, hidden_dim]
         # 4. 将Xbm输入到全连接层中
         Xdnn = self.linear(Xbm)
         Xar = self.pooling(Xdnn)

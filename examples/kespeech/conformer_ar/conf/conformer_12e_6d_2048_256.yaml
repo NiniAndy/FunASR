@@ -30,7 +30,7 @@ encoder_conf:
     macaron_style: true
     use_cnn_module: true
     cnn_module_kernel: 15
-    interctc_layer_idx: [ 6, 9 ]
+    interctc_layer_idx: [ 6, 9]
     interctc_use_conditioning: true
     conv_conf:
       conv_bias: False
@@ -54,6 +54,22 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
+
+lasas_conf:
+    kmeans_class_num: 500
+    num_spaces: 8
+    loss_type: "ce"
+    encoder_conf:
+        output_size: 256
+        attention_heads: 4
+        linear_units: 2048
+        num_blocks: 2
+        dropout_rate: 0.1
+        attention_dropout_rate: 0.0
+        input_layer: linear
+        normalize_before: true
+        pos_enc_layer_type: 'no_pos'
+        positional_dropout_rate: 0.1
 
 
 # frontend related
@@ -112,7 +128,7 @@ dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
     batch_type: example # example or length
-    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_size: 2 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

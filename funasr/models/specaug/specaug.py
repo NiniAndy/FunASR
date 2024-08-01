@@ -237,7 +237,7 @@ class SpecAugWav2Vec2(nn.Module):
 
     def forward(self, x, x_lengths=None):
         if random.random() < self.spec_augment_prob and self.spec_augment is not None:
-            x, x_lengths = self.spec_augment(x)
+            x, x_lengths = self.spec_augment(x, x_lengths)
         return x, x_lengths
 
 
