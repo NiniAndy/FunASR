@@ -31,6 +31,7 @@ for audio_datasets in deal_files:
     print ("processing file: ", audio_datasets)
     update_file = []
 
+
     with open(audio_datasets, "r") as f:
         lines = f.readlines()
 
