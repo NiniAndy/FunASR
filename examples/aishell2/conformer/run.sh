@@ -4,7 +4,8 @@
 CUDA_VISIBLE_DEVICES="0,1,2,3"
 
 # general configuration
-feats_dir="../DATA" #feature output dictionary
+#feats_dir="../DATA" #feature output dictionary
+feats_dir="/ssd/zhuang/code/FunASR/examples/kespeech/DATA"
 exp_dir=`pwd`
 lang=zh
 token_type=char
@@ -16,7 +17,8 @@ nj=32
 
 inference_device="cuda" #"cpu"
 inference_checkpoint="model.pt.avg10"
-inference_scp="wav.scp"
+#inference_scp="wav.scp"
+inference_scp="audio_datasets_phase1.jsonl"
 inference_batch_size=1
 
 # data
@@ -41,7 +43,10 @@ set -o pipefail
 train_set=train
 valid_set=dev/IOS
 # test_sets="dev/IOS test/IOS dev/Android test/Android dev/MIC tesst/MIC"
-test_sets="dev/IOS test/IOS"
+#test_sets="test/IOS"
+
+test_sets="ES/Beijing/train ES/Ji-Lu/train ES/Jiang-Huai/train ES/Jiao-Liao/train ES/Lan-Yin/train ES/Northeastern/train ES/Southwestern/train ES/Zhongyuan/train MD/train"
+
 
 config=conformer_12e_6d_2048_256.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
@@ -49,7 +54,7 @@ token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
 
 # ASR Training Stage
 if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-  echo "stage 4: ASR Training"
+  echo "stage 1: ASR Training"
 
   mkdir -p ${exp_dir}/exp/${model_dir}
   current_time=$(date "+%Y-%m-%d_%H-%M")
@@ -77,7 +82,7 @@ fi
 
 # Testing Stage
 if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
-  echo "stage 5: Inference"
+  echo "stage 2: Inference"
 
   if [ ${inference_device} == "cuda" ]; then
       nj=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
@@ -91,17 +96,23 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_funasr_ar_decoder"
+    config_path="/ssd/zhuang/code/FunASR/examples/aishell2/conformer/exp/conformer_aishell2"
+    init_param="/ssd/zhuang/code/FunASR/examples/aishell2/conformer/exp/conformer_aishell2/model.pt"
+    token_list="/ssd/zhuang/code/FunASR/examples/aishell2/conformer/exp/conformer_aishell2/tokens.json"
+    cmvn_file="/ssd/zhuang/code/FunASR/examples/aishell2/conformer/exp/conformer_aishell2/am.mvn"
+    inference_dir="${config_path}/inference-${dset}"
+
+#    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_funasr_ar_decoder"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 
     mkdir -p "${_logdir}"
-    data_dir="${feats_dir}/data/${dset}"
+    data_dir="${feats_dir}/data3/${dset}"
     key_file=${data_dir}/${inference_scp}
 
     split_scps=
     for JOB in $(seq "${nj}"); do
-        split_scps+=" ${_logdir}/keys.${JOB}.scp"
+        split_scps+=" ${_logdir}/keys.${JOB}.${inference_scp}"
     done
     utils/split_scp.pl "${key_file}" ${split_scps}
 
@@ -111,14 +122,39 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
           id=$((JOB-1))
           gpuid=${gpuid_list_array[$id]}
 
+#          export CUDA_VISIBLE_DEVICES=${gpuid}
+#          python ../../../funasr/bin/inference.py \
+#          --config-path="${exp_dir}/exp/${model_dir}" \
+#          --config-name="config.yaml" \
+#          ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
+#          ++tokenizer_conf.token_list="${token_list}" \
+#          ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
+#          ++input="${_logdir}/keys.${JOB}.scp" \
+#          ++output_dir="${inference_dir}/${JOB}" \
+#          ++device="${inference_device}" \
+#          ++ncpu=1 \
+#          ++disable_log=true \
+#          ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt
+
+#          echo "--config-path="${config_path}\
+#          --config-name=config.yaml\
+#          ++init_param=${init_param} \
+#          ++tokenizer_conf.token_list=${token_list} \
+#          ++frontend_conf.cmvn_file=${cmvn_file} \
+#          ++input=${_logdir}/keys.${JOB}.scp \
+#          ++output_dir=${inference_dir}/${JOB} \
+#          ++device=${inference_device} \
+#          ++ncpu=1 \
+#          ++disable_log=true \"
+
           export CUDA_VISIBLE_DEVICES=${gpuid}
           python ../../../funasr/bin/inference.py \
-          --config-path="${exp_dir}/exp/${model_dir}" \
+          --config-path="${config_path}" \
           --config-name="config.yaml" \
-          ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
+          ++init_param="${init_param}" \
           ++tokenizer_conf.token_list="${token_list}" \
-          ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
-          ++input="${_logdir}/keys.${JOB}.scp" \
+          ++frontend_conf.cmvn_file="${cmvn_file}" \
+          ++input="${_logdir}/keys.${JOB}.${inference_scp}" \
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \
           ++ncpu=1 \

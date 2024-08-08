@@ -38,6 +38,7 @@ class Embedding(nn.Embedding, LoRALayer):
         embedding_dim: int,
         r: int = 0,
         lora_alpha: int = 1,
+        lora_dropout: float = 0.0,
         merge_weights: bool = True,
         **kwargs
     ):

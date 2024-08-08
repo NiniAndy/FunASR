@@ -8,7 +8,7 @@ import os
 
 from typing import Dict
 
-from .layers import LoRALayer, Linear, ConvLoRA
+from .layers import LoRALayer, Linear, ConvLoRA, Embedding
 
 
 def mark_only_lora_as_trainable(
@@ -91,9 +91,16 @@ def loar_wrapper(
     # 检查model里是否包含substitute_dict的模型
     for module_name, M_module_name in substitute_dict.items():
         module = getattr(model, module_name)
-        for M_name, M_substitute_list in M_module_name.items():
-            for sub_name in M_substitute_list:
-                replace_layer_recursive(module, sub_name, lora_kwargs)
+        # 如果module本身是nn.linear, nn.conv1d, nn.conv2d, nn.embedding, 则直接替换
+        if isinstance(module, nn.Linear) or isinstance(module, nn.Conv1d) or isinstance(module, nn.Conv2d) or isinstance(module, nn.Embedding):
+            replace_layer_recursive(module, module_name, lora_kwargs)
+        else:
+            for M_name, M_substitute_list in M_module_name.items():
+                if M_substitute_list is None:
+                    replace_layer_recursive(module, M_name, lora_kwargs)
+                else:
+                    for sub_name in M_substitute_list:
+                        replace_layer_recursive(module, sub_name, lora_kwargs)
     return model
 
 
@@ -153,9 +160,13 @@ def replace_layer_recursive(module, target_layer_name, lora_kwargs, parent_name=
                 print(f"Replacing layer: {full_name} with new LoRA Conv2d layer")
 
         elif isinstance(child, nn.Embedding) and name == target_layer_name:
+            embedding_dim = child.embedding_dim
+            num_embeddings = child.num_embeddings
+            replace_layer = Embedding(num_embeddings, embedding_dim, **lora_kwargs)
+            setattr(module, name, replace_layer)
             local_rank = int(os.environ.get("LOCAL_RANK", 0))
             if local_rank == 0:
-                print(f"Replacing layer: {full_name} ")
+                print(f"Replacing layer: {full_name} with new LoRA emb layer")
         else:
             # 如果子模块不是目标层，递归调用此函数
             replace_layer_recursive(child, target_layer_name, lora_kwargs, full_name)

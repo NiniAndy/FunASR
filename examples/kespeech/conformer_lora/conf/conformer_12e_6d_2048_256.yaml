@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: ConformerAr
+model: Conformer
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -22,7 +22,7 @@ encoder_conf:
     dropout_rate: 0.1
     positional_dropout_rate: 0.1
     attention_dropout_rate: 0.0
-    input_layer: hubert # encoder architecture type
+    input_layer: conv2d # encoder architecture type
     normalize_before: true
     pos_enc_layer_type: rel_pos
     selfattention_layer_type: rel_selfattn
@@ -30,19 +30,6 @@ encoder_conf:
     macaron_style: true
     use_cnn_module: true
     cnn_module_kernel: 15
-    interctc_layer_idx: [ 6, 9]
-    interctc_use_conditioning: true
-    conv_conf:
-      conv_bias: False
-      conv_dim: [ 512, 512, 512, 512, 512, 512, 512 ]
-      conv_kernel: [ 10, 3, 3, 3, 3, 2, 2 ]
-      conv_stride: [ 5, 2, 2, 2, 2, 2, 2 ]
-      conv_activation: "gelu"
-    feat_extract_conf:
-      feat_extract_norm: "group"
-      num_feat_extract_layers: 7
-      feat_proj_layer_norm: True
-      feat_proj_dropout: 0.0
 
 # decoder
 decoder: TransformerDecoder
@@ -55,45 +42,33 @@ decoder_conf:
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
 
-lasas_conf:
-    kmeans_class_num: 500
-    num_spaces: 9
-    loss_type: "ce"
-    encoder_conf:
-        output_size: 256
-        attention_heads: 4
-        linear_units: 2048
-        num_blocks: 2
-        dropout_rate: 0.1
-        attention_dropout_rate: 0.0
-        input_layer: linear
-        normalize_before: true
-        pos_enc_layer_type: 'no_pos'
-        positional_dropout_rate: 0.1
-
 
 # frontend related
-# frontend related
-frontend: RawFrontend
+frontend: WavFrontend
 frontend_conf:
-  fs: 16000
-  upsacle_samples: False
-  normalize: True
+    fs: 16000
+    window: hamming
+    n_mels: 80
+    frame_length: 25
+    frame_shift: 10
+    lfr_m: 1
+    lfr_n: 1
 
-specaug: SpecAugWav2Vec2
+specaug: SpecAug
 specaug_conf:
-  use_spec_augment: true
-  spec_augment_prob: 0.3
-  apply_time_warp: true
-  time_warp_window: 80
-  time_warp_mode: bicubic
-  apply_freq_mask: true
-  freq_mask_width_range: (0, 100)
-  num_freq_mask: 2
-  apply_time_mask: true
-  time_mask_width_range: null
-  time_mask_width_ratio_range: (0, 0.1)
-  num_time_mask: 2
+    apply_time_warp: true
+    time_warp_window: 5
+    time_warp_mode: bicubic
+    apply_freq_mask: true
+    freq_mask_width_range:
+    - 0
+    - 30
+    num_freq_mask: 2
+    apply_time_mask: true
+    time_mask_width_range:
+    - 0
+    - 40
+    num_time_mask: 2
 
 train_conf:
   accum_grad: 1
@@ -127,8 +102,8 @@ dataset: AudioWithDialectDataset
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
-    batch_type: length # example or length
-    batch_size: 12500 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_type: example # example or length
+    batch_size: 64 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

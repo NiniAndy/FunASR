@@ -1,0 +1,35 @@
+{
+    "lora_layers":{
+        "encoder": {
+            "self_attn": [
+                "linear_q",
+                "linear_k",
+                "linear_v",
+                "linear_out"]
+        },
+        "decoder": {
+            "embed": [
+                "0"
+            ],
+            "self_attn": [
+                "linear_q",
+                "linear_k",
+                "linear_v",
+                "linear_out"
+            ],
+            "src_attn": [
+                "linear_q",
+                "linear_k",
+                "linear_v",
+                "linear_out"
+            ],
+            "output_layer": null
+        }
+    },
+    "lora_info":{
+        "r": 32,
+        "lora_alpha": 64,
+        "lora_dropout": 0.0
+    },
+    "lora_exception": ["decoder"]
+}

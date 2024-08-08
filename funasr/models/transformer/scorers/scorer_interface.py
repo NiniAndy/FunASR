@@ -51,7 +51,7 @@ class ScorerInterface:
         """
         return None if state is None else state[i]
 
-    def score(self, y: torch.Tensor, state: Any, x: torch.Tensor) -> Tuple[torch.Tensor, Any]:
+    def score(self, y: torch.Tensor, state: Any, x: torch.Tensor, **kwargs) -> Tuple[torch.Tensor, Any]:
         """Score new token (required).
 
         Args:
@@ -95,7 +95,7 @@ class BatchScorerInterface(ScorerInterface):
         return self.init_state(x)
 
     def batch_score(
-        self, ys: torch.Tensor, states: List[Any], xs: torch.Tensor
+        self, ys: torch.Tensor, states: List[Any], xs: torch.Tensor, **kwargs
     ) -> Tuple[torch.Tensor, List[Any]]:
         """Score new token batch (required).
 
@@ -119,7 +119,7 @@ class BatchScorerInterface(ScorerInterface):
         scores = list()
         outstates = list()
         for i, (y, state, x) in enumerate(zip(ys, states, xs)):
-            score, outstate = self.score(y, state, x)
+            score, outstate = self.score(y, state, x, **kwargs)
             outstates.append(outstate)
             scores.append(score)
         scores = torch.cat(scores, 0).view(ys.shape[0], -1)

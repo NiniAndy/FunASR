@@ -1,0 +1,18 @@
+DATA:
+  train_data: '/nvme0/zhuang/CodeStorage/DARNet/data/ASR/train_phase1/data.list'
+  cv_data: '/nvme0/zhuang/CodeStorage/DARNet/data/ASR/dev_phase1/data.list'
+  test_data: '/nvme0/zhuang/CodeStorage/DARNet/data/ASR/dev_phase1/data.list'
+  symbol_table: '/nvme0/zhuang/CodeStorage/DARNet/data/lang_char.txt'
+  pny_table: '/nvme0/zhuang/CodeStorage/DARNet/data/lang_pny.txt'
+  acc_table: '/nvme0/zhuang/CodeStorage/DARNet/data/lang_acc.txt'
+
+SOLVER:
+  devices: [3]
+  max_epochs: 200
+  train_batch_size: 2
+  valid_batch_size: 2
+  test_batch_size: 1
+
+SAVE:
+  name: "han_without_accent_prompt"
+

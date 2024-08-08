@@ -309,6 +309,7 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
 
         self.int_pad_value = int_pad_value
         self.float_pad_value = float_pad_value
+        self.spurious_label_pad_value = kwargs.get("spurious_label_pad_value", 17)
 
         if hasattr(self.index_ds, 'text_language_flag') and callable(getattr(self.index_ds, 'text_language_flag')):
             self.text_language_flag = self.index_ds.text_language_flag()
@@ -343,6 +344,11 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
         else:
             self.with_or_wo_itn_flag = False
 
+        if hasattr(self.index_ds, 'spurious_label_flag') and callable(getattr(self.index_ds, 'spurious_label_flag')):
+            self.spurious_label_flag = self.index_ds.spurious_label_flag()
+        else:
+            self.spurious_label_flag = False
+
 
     def get_source_len(self, index):
         item = self.index_ds[index]
@@ -359,8 +365,10 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
         item = self.index_ds[index]
         # import pdb;
         # pdb.set_trace()
+        key = item.get("key", None)
         source = item["source"]
         data_src = load_audio_text_image_video(source, fs=self.fs)
+
         if self.preprocessor_speech:
             data_src = self.preprocessor_speech(data_src, fs=self.fs)
         speech, speech_lengths = extract_fbank(
@@ -381,23 +389,29 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
 
         # 格式化输出条目
         entry = {
+            "key": key,
             "speech": speech[0, :, :],
             "speech_lengths": speech_lengths,
             "text": text,
             "text_lengths": text_lengths,
         }
-        # 添加潜在的其他条目
-        entry = self.extra_data(entry, item)
 
-        return entry
-
-    # TODO: 增加其他条目
-    def extra_data(self, entry, item):
+        # TODO: 增加其他条目
+        # source_len = torch.tensor([item["source_len"]], dtype=torch.int32)
+        # entry.update({"source_len": source_len})
         if self.text_language_flag:
             text_language = item["text_language"]
             text_language = self.text_language_vocab[text_language]
-            entry["text_language"] = torch.tensor([text_language], dtype=torch.int32)
+            text_language = torch.tensor([text_language], dtype=torch.int32)
+            entry.update({"text_language": text_language})
+        if self.spurious_label_flag:
+            spurious_label = item["spurious_label"]
+            spurious_label = torch.tensor([int(x) for x in spurious_label.split()], dtype=torch.int32)
+            spurious_label_lengths = torch.tensor([len(spurious_label)], dtype=torch.int32)
+            entry.update({"spurious_label": spurious_label, "spurious_label_lengths": spurious_label_lengths})
+
         return entry
+
 
 
 
@@ -415,6 +429,9 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
                     pad_value = self.int_pad_value
                 else:
                     pad_value = self.float_pad_value
+
+                if key == "spurious_label":
+                    pad_value = self.spurious_label_pad_value
 
                 outputs[key] = torch.nn.utils.rnn.pad_sequence(
                     data_list, batch_first=True, padding_value=pad_value

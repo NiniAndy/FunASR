@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: ConformerAr
+model: ArConformer
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -55,25 +55,7 @@ decoder_conf:
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
 
-lasas_conf:
-    kmeans_class_num: 500
-    num_spaces: 9
-    loss_type: "ce"
-    encoder_conf:
-        output_size: 256
-        attention_heads: 4
-        linear_units: 2048
-        num_blocks: 2
-        dropout_rate: 0.1
-        attention_dropout_rate: 0.0
-        input_layer: linear
-        normalize_before: true
-        pos_enc_layer_type: 'no_pos'
-        positional_dropout_rate: 0.1
 
-
-# frontend related
-# frontend related
 frontend: RawFrontend
 frontend_conf:
   fs: 16000
@@ -128,7 +110,7 @@ dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
     batch_type: length # example or length
-    batch_size: 12500 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

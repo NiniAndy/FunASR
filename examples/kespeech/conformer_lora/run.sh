@@ -8,8 +8,8 @@ feats_dir="../DATA/data2" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
-stop_stage=5
+stage=4
+stop_stage=4
 
 # feature configuration
 nj=32
@@ -25,7 +25,7 @@ raw_data=/data/nas/ASR_Datasets/data_aishell/
 #data_url=www.openslr.org/resources/33s
 
 # exp tag
-tag="WD"
+tag="Whole_withAR_prompt_hfe"
 workspace=`pwd`
 
 master_port=12345
@@ -41,11 +41,11 @@ set -o pipefail
 
 train_set=WD/train
 valid_set=WD/dev
-#test_sets=MD/test
-#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
 test_sets=WD/test
+#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test"
 
-config=conformer_multi_embed_decoder.yaml
+
+config=conformer_hubert_feature_extract.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${tag}"
 
 
@@ -133,12 +133,11 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   --config-name "${config}" \
   ++train_data_set_list="${feats_dir}/${train_set}/audio_datasets.jsonl" \
   ++valid_data_set_list="${feats_dir}/${valid_set}/audio_datasets.jsonl" \
-  ++frontend_conf.cmvn_file="${feats_dir}/${train_set}/am.mvn" \
   ++text_language_vocab_path=${text_language_vocab_path} \
   ++tokenizer_conf.token_list="${token_list}" \
   ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
   ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
-
+#    ++frontend_conf.cmvn_file="${feats_dir}/${train_set}/am.mvn" \
 fi
 
 
@@ -164,7 +163,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     echo "inference_dir: ${inference_dir}"
 
     mkdir -p "${_logdir}"
-    data_dir="${feats_dir}/${dset}"
+    data_dir="${feats_dir}/data2/${dset}"
     key_file=${data_dir}/${inference_scp}
 
     file_ext="${key_file##*.}"
@@ -192,10 +191,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           --config-path="${exp_dir}/exp/${model_dir}" \
           --config-name="config.yaml" \
           ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
-          ++frontend_conf.cmvn_file="${feats_dir}/${train_set}/am.mvn" \
           ++tokenizer_conf.token_list="${token_list}" \
           ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
           ++text_language_vocab_path=${text_language_vocab_path} \
+          ++frontend_conf.cmvn_file="${feats_dir}/data2/${train_set}/am.mvn" \
           ++input="${_logdir}/keys.${JOB}.${file_ext}" \
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \

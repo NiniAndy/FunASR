@@ -4,12 +4,11 @@
 CUDA_VISIBLE_DEVICES="0,1,2,3"
 
 # general configuration
-feats_dir="../DATA" #feature output dictionary
+feats_dir="../DATA/data2" #feature output dictionary
 exp_dir=`pwd`
-lang=zh
-token_type=char
-stage=4
-stop_stage=4
+
+stage=1
+stop_stage=1
 
 # feature configuration
 nj=32
@@ -19,13 +18,8 @@ inference_checkpoint="model.pt.avg10"
 inference_scp="wav.scp"
 inference_batch_size=1
 
-# data
-#raw_data=/data/nas/zhuang/dataset/data_aishell
-raw_data=/data/nas/ASR_Datasets/data_aishell/
-#data_url=www.openslr.org/resources/33s
-
 # exp tag
-tag="Whole_withAR_prompt"
+tag="exp1"
 workspace=`pwd`
 
 master_port=12345
@@ -46,69 +40,11 @@ test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES
 
 
 config=conformer_12e_6d_2048_256.yaml
-model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
+model_dir="baseline_$(basename "${config}" .yaml)_${tag}"
 
-
-if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
-    echo "stage -1: Data Download"
-    mkdir -p ${raw_data}
-    local/download_and_untar.sh ${raw_data} ${data_url} data_aishell
-    local/download_and_untar.sh ${raw_data} ${data_url} resource_aishell
-fi
-
-if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
-    echo "stage 0: Data preparation"
-
-    # Data preparation
-    local/aishell_data_prep.sh ${raw_data}/data_aishell/wav ${raw_data}/data_aishell/transcript ${feats_dir}
-    for x in train dev test; do
-        cp ${feats_dir}/data/${x}/text ${feats_dir}/data/${x}/text.org
-        paste -d " " <(cut -f 1 -d" " ${feats_dir}/data/${x}/text.org) <(cut -f 2- -d" " ${feats_dir}/data/${x}/text.org | tr -d " ") \
-            > ${feats_dir}/data/${x}/text
-        utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
-        mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
-
-        # convert wav.scp text to jsonl
-        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
-        python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
-        ++data_type_list='["source", "target"]' \
-        ++jsonl_file_out=${feats_dir}/data/${x}/audio_datasets.jsonl \
-        ${scp_file_list_arg}
-    done
-fi
-
-if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
-    echo "stage 1: Feature and CMVN Generation"
-    python ../../../funasr/bin/compute_audio_cmvn.py \
-    --config-path "${workspace}/conf" \
-    --config-name "${config}" \
-    ++train_data_set_list="${feats_dir}/data/${train_set}/audio_datasets.jsonl" \
-    ++cmvn_file="${feats_dir}/data/${train_set}/cmvn.json" \
-
-fi
-
-token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
-echo "dictionary: ${token_list}"
-if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
-    echo "stage 2: Dictionary Preparation"
-    mkdir -p ${feats_dir}/data/${lang}_token_list/$token_type/
-   
-    echo "make a dictionary"
-    echo "<blank>" > ${token_list}
-    echo "<s>" >> ${token_list}
-    echo "</s>" >> ${token_list}
-    utils/text2token.py -s 1 -n 1 --space "" ${feats_dir}/data/$train_set/text | cut -f 2- -d" " | tr " " "\n" \
-        | sort | uniq | grep -a -v -e '^\s*$' | awk '{print $0}' >> ${token_list}
-    echo "<unk>" >> ${token_list}
-fi
-
-# LM Training Stage
-if [ ${stage} -le 3 ] && [ ${stop_stage} -ge 3 ]; then
-    echo "stage 3: LM Training"
-fi
 
 # ASR Training Stage
-if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
+if [ ${stage} -le 1 ] && [ ${stop_stage} -ge 1 ]; then
   echo "stage 4: ASR Training"
 
   mkdir -p ${exp_dir}/exp/${model_dir}
@@ -117,10 +53,10 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   echo "log_file: ${log_file}"
 
   # some configurations
-  token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/tokens.txt
+  token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data3/zh_token_list/char/tokens.txt
   # dialect information
-  add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
-  text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+  add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data3/zh_token_list/char/dialects.txt
+  text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data3/zh_token_list/char/dialects.txt
 
   export CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
   gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
@@ -131,19 +67,18 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   ../../../funasr/bin/train.py \
   --config-path "${workspace}/conf" \
   --config-name "${config}" \
-  ++train_data_set_list="${feats_dir}/data2/${train_set}/audio_datasets.jsonl" \
-  ++valid_data_set_list="${feats_dir}/data2/${valid_set}/audio_datasets.jsonl" \
+  ++train_data_set_list="${feats_dir}/${train_set}/audio_datasets_phase1.jsonl" \
+  ++valid_data_set_list="${feats_dir}/${valid_set}/audio_datasets_phase1.jsonl" \
   ++text_language_vocab_path=${text_language_vocab_path} \
-  ++tokenizer_conf.token_list="${token_list}" \
   ++tokenizer_conf.add_special_token_list=${add_special_token_list} \
-  ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
+  ++tokenizer_conf.token_list="${token_list}" \
   ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
 fi
 
 
 
 # Testing Stage
-if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
   echo "stage 5: Inference"
 
   if [ ${inference_device} == "cuda" ]; then
@@ -163,7 +98,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     echo "inference_dir: ${inference_dir}"
 
     mkdir -p "${_logdir}"
-    data_dir="${feats_dir}/data/${dset}"
+    data_dir="${feats_dir}/${dset}"
     key_file=${data_dir}/${inference_scp}
 
     split_scps=
@@ -184,7 +119,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           --config-name="config.yaml" \
           ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
           ++tokenizer_conf.token_list="${token_list}" \
-          ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
+          ++frontend_conf.cmvn_file="${feats_dir}/${train_set}/am.mvn" \
           ++input="${_logdir}/keys.${JOB}.scp" \
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \

@@ -18,13 +18,10 @@ from funasr.utils import postprocess_utils
 from funasr.utils.datadir_writer import DatadirWriter
 from funasr.register import tables
 
-from funasr.models.transformer.utils.subsampling import HubertFeatureEncoder
-from funasr.models.accent_recognition.lasas import LASAS
 
-
-@tables.register("model_classes", "TransformerAr")
-class TransformerAr(nn.Module):
-    """识别口音"""
+@tables.register("model_classes", "MultiTransformer")
+class MultiTransformer(nn.Module):
+    """CTC-attention hybrid Encoder-Decoder model"""
 
     def __init__(
         self,
@@ -64,51 +61,9 @@ class TransformerAr(nn.Module):
         if specaug is not None:
             specaug_class = tables.specaug_classes.get(specaug)
             specaug = specaug_class(**specaug_conf)
-
         if normalize is not None:
             normalize_class = tables.normalize_classes.get(normalize)
             normalize = normalize_class(**normalize_conf)
-
-        encoder_class = tables.encoder_classes.get(encoder)
-        encoder = encoder_class(input_size=input_size, **encoder_conf)
-        encoder_output_size = encoder.output_size()
-
-        text_language_vocab_path = kwargs.get("text_language_vocab_path", None)
-        assert text_language_vocab_path is not None, "text_language_vocab_path is required"
-        text_language_vocab = {}
-        with open(kwargs['text_language_vocab_path'], "r") as f:
-            for line in f:
-                line = line.strip()
-                text_language_vocab[line] = len(text_language_vocab)
-
-        dialect_size = len(text_language_vocab)
-
-        lasas_conf = kwargs.get("lasas_conf", {})
-        if encoder.interctc_use_conditioning:
-            layer_combine_num = len(encoder.interctc_layer_idx)
-            lasas_input_size = encoder_output_size * layer_combine_num
-        else:
-            lasas_input_size = encoder_output_size
-        acc_num = lasas_conf.get("accent_size", dialect_size)
-        lasas = LASAS(lasas_input_size, acc_num, **lasas_conf)
-
-        lasas_output_size = lasas.output_size()
-        decoder_input_size = encoder_output_size + lasas_output_size
-
-        if decoder is not None:
-            decoder_class = tables.decoder_classes.get(decoder)
-            decoder = decoder_class(
-                vocab_size=vocab_size,
-                encoder_output_size=decoder_input_size,
-                **decoder_conf
-            )
-
-        if ctc_weight > 0.0:
-
-            if ctc_conf is None:
-                ctc_conf = {}
-
-            ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
 
         tokenizer = kwargs.get("tokenizer", None)
         self.blank_id = blank_id
@@ -128,9 +83,23 @@ class TransformerAr(nn.Module):
             if add_special_token_list:
                 self.start_id_of_special_tokens = len(token2id) - len(add_special_token_list)
 
+        encoder_class = tables.encoder_classes.get(encoder)
+        encoder = encoder_class(input_size=input_size, **encoder_conf)
+        encoder_output_size = encoder.output_size()
+        if decoder is not None:
+            decoder_class = tables.decoder_classes.get(decoder)
+            decoder = decoder_class(
+                vocab_size=vocab_size,
+                encoder_output_size=encoder_output_size,
+                multi_embed_num=kwargs.get("multi_embed_num", len(add_special_token_list)),
+                **decoder_conf
+            )
+        if ctc_weight > 0.0:
 
+            if ctc_conf is None:
+                ctc_conf = {}
 
-
+            ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
 
         self.vocab_size = vocab_size
         self.ignore_id = ignore_id
@@ -138,7 +107,6 @@ class TransformerAr(nn.Module):
         self.specaug = specaug
         self.normalize = normalize
         self.encoder = encoder
-        self.lasas = lasas
 
         if not hasattr(self.encoder, "interctc_use_conditioning"):
             self.encoder.interctc_use_conditioning = False
@@ -179,13 +147,13 @@ class TransformerAr(nn.Module):
         self.length_normalized_loss = length_normalized_loss
         self.beam_search = None
 
+
     def forward(
         self,
         speech: torch.Tensor,
         speech_lengths: torch.Tensor,
         text: torch.Tensor,
         text_lengths: torch.Tensor,
-        text_language: torch.Tensor,
         **kwargs,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
         """Encoder + Decoder + Calc loss
@@ -200,9 +168,8 @@ class TransformerAr(nn.Module):
         if len(speech_lengths.size()) > 1:
             speech_lengths = speech_lengths[:, 0]
 
+        text_language = kwargs["text_language"]
         batch_size = speech.shape[0]
-
-        text_language_id = text_language + self.start_id_of_special_tokens
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
@@ -210,38 +177,6 @@ class TransformerAr(nn.Module):
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
-
-        # 根据encoder_out_lens改变spurious_label的长度
-        spurious_label = kwargs.get("spurious_label", None)
-        spurious_label_lens = kwargs.get("spurious_label_lengths", None)  # [B, 1]
-        spurious_label_lens = spurious_label_lens[:, 0] # [B]
-        adjust_spurious_label_list = []
-
-        for i in range(batch_size):
-            adjust_spurious_label = spurious_label[i][:spurious_label_lens[i]]
-            if encoder_out_lens[i] == spurious_label_lens[i]:
-                adjust_spurious_label_list.append(adjust_spurious_label)
-            else:
-                new_length = encoder_out_lens[i]
-                new_indices = torch.linspace(0, spurious_label_lens[i] - 1, steps=new_length).long()
-                adjust_spurious_label = adjust_spurious_label[new_indices]
-                adjust_spurious_label_list.append(adjust_spurious_label)
-        spurious_label = torch.nn.utils.rnn.pad_sequence(adjust_spurious_label_list, batch_first=True, padding_value=17)
-
-        # 拼接Xa
-        if intermediate_outs is not None:
-            intermediate_out_list = [out for _, out in intermediate_outs]
-            Xa = torch.cat(intermediate_out_list, dim=-1)
-        else:
-            Xa = encoder_out
-
-        Xar, Xdnn = self.lasas(Xa, spurious_label, encoder_out_lens)
-        loss_dal, acc_dal, dal_out = self.lasas.calculate_loss(Xar, text_language)
-
-
-        decoder_input = torch.cat([encoder_out, Xdnn], dim=-1)
-        decoder_input_lens = encoder_out_lens
-
 
         loss_att, acc_att, cer_att, wer_att = None, None, None, None
         loss_ctc, cer_ctc = None, None
@@ -281,7 +216,7 @@ class TransformerAr(nn.Module):
 
         # decoder: Attention decoder branch
         loss_att, acc_att, cer_att, wer_att = self._calc_att_loss(
-            decoder_input, decoder_input_lens, text, text_lengths, text_language_id
+            encoder_out, encoder_out_lens, text, text_lengths, text_language
         )
 
         # 3. CTC-Att loss definition
@@ -292,15 +227,11 @@ class TransformerAr(nn.Module):
         else:
             loss = self.ctc_weight * loss_ctc + (1 - self.ctc_weight) * loss_att
 
-        loss = loss + loss_dal
-
         # Collect Attn branch stats
         stats["loss_att"] = loss_att.detach() if loss_att is not None else None
         stats["acc"] = acc_att
         stats["cer"] = cer_att
         stats["wer"] = wer_att
-        stats["loss_dal"] = loss_dal.detach() if loss_dal is not None else None
-        stats["acc_dal"] = acc_dal
 
         # Collect total loss stats
         stats["loss"] = torch.clone(loss.detach())
@@ -325,34 +256,21 @@ class TransformerAr(nn.Module):
         """
         with autocast(False):
 
-            # 如果encoder的embed是Hubert/Wav2Vec2的embed则需要先进行cnn再做增强
-            if isinstance(self.encoder.embed, HubertFeatureEncoder):
-                speech = speech.transpose(1, 2)
-                speech, speech_lengths = self.encoder.feature_extractor_forward(speech, speech_lengths)
-                speech, pos_emb = speech
+            # Data augmentation
+            if self.specaug is not None and self.training:
                 speech, speech_lengths = self.specaug(speech, speech_lengths)
-                speech = (speech, pos_emb)
-                if self.encoder.interctc_use_conditioning:
-                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths, ctc=self.ctc)
-                else:
-                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths)
-            else:
-                # Data augmentation
-                if self.specaug is not None and self.training:
-                    speech, speech_lengths = self.specaug(speech, speech_lengths)
 
-                # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
-                if self.normalize is not None:
-                    speech, speech_lengths = self.normalize(speech, speech_lengths)
+            # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
+            if self.normalize is not None:
+                speech, speech_lengths = self.normalize(speech, speech_lengths)
 
-                # Forward encoder
-                # feats: (Batch, Length, Dim)
-                # -> encoder_out: (Batch, Length2, Dim2)
-                if self.encoder.interctc_use_conditioning:
-                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
-                else:
-                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
-
+        # Forward encoder
+        # feats: (Batch, Length, Dim)
+        # -> encoder_out: (Batch, Length2, Dim2)
+        if self.encoder.interctc_use_conditioning:
+            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
+        else:
+            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
@@ -369,15 +287,13 @@ class TransformerAr(nn.Module):
         encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
-        text_language_id: torch.Tensor,
+        text_language: torch.Tensor,
     ):
-
         ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id)
         ys_in_lens = ys_pad_lens + 1
-        ys_in_pad = torch.cat((text_language_id, ys_in_pad[:, 1:]), dim=-1)
 
         # 1. Forward decoder
-        decoder_out, _ = self.decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens)
+        decoder_out, _ = self.decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens, text_language)
 
         # 2. Compute attention loss
         loss_att = self.criterion_att(decoder_out, ys_out_pad)
@@ -514,11 +430,19 @@ class TransformerAr(nn.Module):
         if isinstance(encoder_out, tuple):
             encoder_out = encoder_out[0]
 
+
+
+        text_language = kwargs["text_language"][0]
+        language_id = tokenizer.token2id.get(text_language, self.sos) - self.start_id_of_special_tokens
+        language_id = torch.tensor([language_id], device=encoder_out.device)
+        beam_search_dict = {'language_id': language_id}
+
         # c. Passed the encoder result and the beam search
         nbest_hyps = self.beam_search(
             x=encoder_out[0],
             maxlenratio=kwargs.get("maxlenratio", 0.0),
             minlenratio=kwargs.get("minlenratio", 0.0),
+            **beam_search_dict
         )
 
         nbest_hyps = nbest_hyps[: self.nbest]

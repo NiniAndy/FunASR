@@ -149,7 +149,10 @@ class BeamSearch(torch.nn.Module):
         return torch.cat((xs, x))
 
     def score_full(
-            self, hyp: Hypothesis, x: torch.Tensor
+            self,
+            hyp: Hypothesis,
+            x: torch.Tensor,
+            **kwargs
     ) -> Tuple[Dict[str, torch.Tensor], Dict[str, Any]]:
         """Score new hypothesis by `self.full_scorers`.
 
@@ -168,7 +171,7 @@ class BeamSearch(torch.nn.Module):
         scores = dict()
         states = dict()
         for k, d in self.full_scorers.items():
-            scores[k], states[k] = d.score(hyp.yseq, hyp.states[k], x)
+            scores[k], states[k] = d.score(hyp.yseq, hyp.states[k], x, **kwargs)
         return scores, states
 
     def score_partial(
@@ -277,7 +280,7 @@ class BeamSearch(torch.nn.Module):
             new_states[k] = d.select_state(part_states[k], part_idx)
         return new_states
 
-    def search(self, running_hyps: List[Hypothesis], x: torch.Tensor) -> List[Hypothesis]:
+    def search(self, running_hyps: List[Hypothesis], x: torch.Tensor, **kwargs) -> List[Hypothesis]:
         """Search new tokens for running hypotheses and encoded speech x.
 
         Args:
@@ -293,7 +296,7 @@ class BeamSearch(torch.nn.Module):
         for hyp in running_hyps:
             # scoring
             weighted_scores = torch.zeros(self.n_vocab, dtype=x.dtype, device=x.device)
-            scores, states = self.score_full(hyp, x)
+            scores, states = self.score_full(hyp, x, **kwargs)
             for k in self.full_scorers:
                 weighted_scores += self.weights[k] * scores[k]
             # partial scoring
@@ -367,7 +370,7 @@ class BeamSearch(torch.nn.Module):
         ended_hyps = []
         for i in range(maxlen):
             logging.debug("position " + str(i))
-            best = self.search(running_hyps, x)
+            best = self.search(running_hyps, x, **kwargs)
             # post process of one iteration
             running_hyps = self.post_process(i, maxlen, maxlenratio, best, ended_hyps)
             # end detection

@@ -325,14 +325,14 @@ class BaseTransformerDecoder(nn.Module, BatchScorerInterface):
 
         return y, new_cache
 
-    def score(self, ys, state, x):
+    def score(self, ys, state, x, **kwargs):
         """Score."""
         ys_mask = subsequent_mask(len(ys), device=x.device).unsqueeze(0)
         logp, state = self.forward_one_step(ys.unsqueeze(0), ys_mask, x.unsqueeze(0), cache=state)
         return logp.squeeze(0), state
 
     def batch_score(
-        self, ys: torch.Tensor, states: List[Any], xs: torch.Tensor
+        self, ys: torch.Tensor, states: List[Any], xs: torch.Tensor, **kwargs
     ) -> Tuple[torch.Tensor, List[Any]]:
         """Score new token batch.
 

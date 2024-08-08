@@ -57,6 +57,7 @@ class LASAS(nn.Module):
         concat_after = encoder_conf.get("concat_after", False)
 
         self.encoder_proj = torch.nn.Linear(input_dim, output_size)
+        self._output_size = output_size
 
 
         if positionwise_layer_type == "linear":
@@ -104,22 +105,25 @@ class LASAS(nn.Module):
         self.pooling = Pooling(input_dim = output_size, output_dim=output_size)
         self.loss = LASASLoss(input_dim=output_size, num_classes=acc_num, type=loss_type)
 
-        self.output_size = output_size
+    def output_size(self):
+        return self._output_size
 
 
-    def forward(self, Xa, Xt, mask):
+    def forward(self, Xa, Xt, X_len):
         '''
         :param Xa: [i, j, k]层的Xse的Cat，shape[batch_size, seq_len, en_output_dim * num_share_layers]
         :param Xt: regular_greedy_ctc_decode()的输出，shape[batch_size, seq_len]
         :return:
         '''
+        mask = (~make_pad_mask(X_len)[:, None, :]).to(Xa.device)
         batch_size, seq_len, _ = Xa.shape
         # 1. 将Xt转换为文本向量
         Xt = self.embed(Xt)
         # 2. 将Xt和Xa转换为双模态表示
         Xbm = self.lasas(Xt, Xa, mask)
         # 3. 将Xbm输入到TransformerEncoder中
-        Xbm, _ = self.encoder(Xbm, mask) # [batch_size,seq_len, hidden_dim]
+        Xbm = self.encoder_proj(Xbm)
+        Xbm, _ = self.encoders(Xbm, mask) # [batch_size,seq_len, hidden_dim]
         # 4. 将Xbm输入到全连接层中
         Xdnn = self.linear(Xbm)
         Xar = self.pooling(Xdnn)
@@ -131,8 +135,8 @@ class LASAS(nn.Module):
         :param Yar: [batch_size, acc_size]
         :return:
         '''
-        Yar_hat, loss, acc = self.loss(Xar, Yar)
-        return Yar_hat, loss, acc
+        loss, acc, Yar_hat = self.loss(Xar, Yar)
+        return loss, acc, Yar_hat
 
 
 
@@ -230,23 +234,15 @@ class LASASLoss(nn.Module):
             print('init softmax')
             print('Embedding dim is {}, number of speakers is {}'.format(input_dim, num_classes))
 
-    def accuracy(self, output, target, topk=(1,)):
-        """Computes the precision@k for the specified values of k"""
-        maxk = max(topk)
-        batch_size = target.size(0)
-
-        _, pred = output.topk(maxk, 1, True, True)
-        pred = pred.t()
-        correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-        res = []
-        for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
-            res.append(correct_k.mul_(100.0 / batch_size))
-        return res
+    def accuracy(self, output, target):
+        correct = (output == target).sum().item()  # 正确预测的个数
+        total = target.size(0)  # 总样本数
+        accuracy = correct / total  # 计算精度
+        return accuracy
 
 
     def forward(self, x, label=None):
+        label = label.squeeze(-1).long()
         if self.type == "amsoftmax":
             assert x.size()[0] == label.size()[0]
             assert x.size()[1] == self.in_feats
@@ -272,9 +268,9 @@ class LASASLoss(nn.Module):
 
             x = F.normalize(x, dim=1)
             x = self.fc(x)
-            output = torch.argmax(x, dim=1)
+            _, output = torch.max(x, dim=1)
             loss = self.criertion(x, label)
-            acc = self.accuracy(x.detach(), label.detach(), topk=(1,))[0]
+            acc = self.accuracy(output, label)
 
         return loss, acc, output
 

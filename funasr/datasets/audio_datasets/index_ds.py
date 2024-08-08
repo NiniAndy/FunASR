@@ -127,6 +127,10 @@ class IndexDSJsonlRankFull(torch.utils.data.Dataset):
                         # audio_language = data.get("audio_language", None)
                         # if audio_language is not None:
                         #     contents_i["audio_language"] = audio_language
+                        if "spurious_label" in data:
+                            contents_i["spurious_label"] = data["spurious_label"]
+                        if "key" in data:
+                            contents_i["key"] = data["key"]
                         contents.append(contents_i)
 
         self.contents = contents
@@ -136,6 +140,7 @@ class IndexDSJsonlRankFull(torch.utils.data.Dataset):
         self._emo_target_flag = "emo_target" in contents[0]
         self._event_target_flag = "event_target" in contents[0]
         self._with_or_wo_itn_flag = "with_or_wo_itn" in contents[0]
+        self._spurious_label_flag = "spurious_label" in contents[0]
 
         logging.info("total_num of samplers: {}, {}".format(len(self.contents), path))
 
@@ -169,3 +174,6 @@ class IndexDSJsonlRankFull(torch.utils.data.Dataset):
 
     def with_or_wo_itn_flag(self):
         return self._with_or_wo_itn_flag
+
+    def spurious_label_flag(self):
+        return self._spurious_label_flag
