@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-CUDA_VISIBLE_DEVICES="0,1,2,3"
+CUDA_VISIBLE_DEVICES="1,2,3"
 
 # general configuration
 feats_dir="../DATA" #feature output dictionary
@@ -25,7 +25,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="debug"
+tag="zhanwei"
 workspace=`pwd`
 
 master_port=12345
