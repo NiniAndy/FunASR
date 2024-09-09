@@ -531,7 +531,7 @@ class ConformerEncoder(nn.Module):
 
         self.interctc_layer_idx = interctc_layer_idx
         if len(interctc_layer_idx) > 0:
-            assert 0 < min(interctc_layer_idx) and max(interctc_layer_idx) < num_blocks
+            assert 0 < min(interctc_layer_idx) and max(interctc_layer_idx) <= num_blocks
         self.interctc_use_conditioning = interctc_use_conditioning
         self.conditioning_layer = None
 

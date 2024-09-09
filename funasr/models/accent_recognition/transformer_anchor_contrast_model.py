@@ -5,6 +5,7 @@ import time
 import torch
 import torch.nn as nn
 from torch.cuda.amp import autocast
+import copy
 
 from funasr.losses.label_smoothing_loss import LabelSmoothingLoss
 from funasr.models.ctc.ctc import CTC
@@ -18,10 +19,18 @@ from funasr.utils import postprocess_utils
 from funasr.utils.datadir_writer import DatadirWriter
 from funasr.register import tables
 
+from funasr.models.transformer.utils.subsampling import HubertFeatureEncoder
+from funasr.models.accent_recognition.lasas import LASAS
+from funasr.models.accent_recognition.asd import ASD
 
-@tables.register("model_classes", "MultiTransformer")
-class MultiTransformer(nn.Module):
-    """CTC-attention hybrid Encoder-Decoder model"""
+import os
+import yaml
+from funasr.auto.auto_model import AutoModel
+
+
+@tables.register("model_classes", "TransformerAnchorContrastAr")
+class TransformerAnchorContrastAr(nn.Module):
+    """识别口音"""
 
     def __init__(
         self,
@@ -61,9 +70,98 @@ class MultiTransformer(nn.Module):
         if specaug is not None:
             specaug_class = tables.specaug_classes.get(specaug)
             specaug = specaug_class(**specaug_conf)
+
         if normalize is not None:
             normalize_class = tables.normalize_classes.get(normalize)
             normalize = normalize_class(**normalize_conf)
+
+        encoder_class = tables.encoder_classes.get(encoder)
+        encoder = encoder_class(input_size=input_size, **encoder_conf)
+        encoder_output_size = encoder.output_size()
+
+        text_language_vocab_path = kwargs.get("text_language_vocab_path", None)
+        assert text_language_vocab_path is not None, "text_language_vocab_path is required"
+        text_language_vocab = {}
+        with open(kwargs['text_language_vocab_path'], "r") as f:
+            for line in f:
+                line = line.strip()
+                text_language_vocab[line] = len(text_language_vocab)
+
+        dialect_size = len(text_language_vocab)
+
+        asd_conf = kwargs.get("asd_conf", {})
+        # if len(encoder.interctc_layer_idx) != 0:
+        #     layer_combine_num = len(encoder.interctc_layer_idx)
+        #     lasas_input_size = encoder_output_size * layer_combine_num
+        # else:
+        #     lasas_input_size = encoder_output_size
+        asd_input_size = encoder_output_size
+        acc_num = asd_conf.get("accent_size", dialect_size)
+        num_space = len(encoder.interctc_layer_idx)
+
+        asd = ASD(asd_input_size, acc_num, num_spaces=num_space, **asd_conf)
+
+        asd_output_size = asd.output_size()
+
+        # merge_encoder_conf = kwargs.get("merge_encoder_conf", {})
+        # if merge_encoder_conf is not None:
+        #     merge_encoder_conf["input_size"] = encoder_output_size + asd_output_size
+        #     merge_encoder_conf["num_blocks"] = 3
+        #     merge_encoder_conf["interctc_layer_idx"] = []
+        #     merge_encoder = encoder_class(input_size=encoder_output_size + asd_output_size, **merge_encoder_conf)
+        #     self.merge_encoder = merge_encoder
+        # merge_encoder_conf["num_blocks"] = 3
+        # merge_encoder_conf["interctc_layer_idx"] = []
+        # merge_encoder = encoder_class(input_size=encoder_output_size + asd_output_size, **merge_encoder_conf)
+        # self.merge_encoder = merge_encoder
+
+        decoder_input_size = encoder_output_size
+
+        if decoder is not None:
+            decoder_class = tables.decoder_classes.get(decoder)
+            decoder = decoder_class(
+                vocab_size=vocab_size,
+                encoder_output_size=decoder_input_size,
+                **decoder_conf
+            )
+
+        anchor_conf = kwargs["anchor_conf"]
+        anchor_base_path = anchor_conf["config_path"]
+        anchor_path = os.path.join(anchor_base_path, "config.yaml")
+        with open(anchor_path, "r") as f:
+            anchor_kwargs = yaml.safe_load(f)
+        # 屏蔽无关参数
+        anchor_kwargs["model_conf"]["ctc_weight"] = 0.0
+        anchor_kwargs["tokenizer"] = None
+        anchor_kwargs["tokenizer_conf"] = None
+        anchor_kwargs["specaug"] = None
+        anchor_kwargs["specaug_conf"] = None
+        anchor_kwargs["decoder"]= None
+        anchor_kwargs["decoder_conf"] = None
+        anchor_kwargs["train_conf"] = None
+        anchor_kwargs["optim"] = None
+        anchor_kwargs["optim_conf"] = None
+        anchor_kwargs["scheduler"] = None
+        anchor_kwargs["scheduler_conf"] = None
+        anchor_kwargs["dataset"] = None
+        anchor_kwargs["dataset_conf"] = None
+        anchor_kwargs["ctc_conf"] = None
+        anchor_kwargs["init_param"] = os.path.join(anchor_base_path, "model.pt")
+        if len(encoder.interctc_layer_idx) != 0:
+            anchor_kwargs["encoder_conf"]["interctc_layer_idx"] = encoder.interctc_layer_idx
+
+        anchor_model = AutoModel(**anchor_kwargs).model.eval()
+        delattr(anchor_model, 'criterion_att')
+        self.anchor_model = anchor_model
+        for param in self.anchor_model.parameters():
+            param.requires_grad = False
+
+        if ctc_weight > 0.0:
+
+            if ctc_conf is None:
+                ctc_conf = {}
+
+            ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
 
         tokenizer = kwargs.get("tokenizer", None)
         self.blank_id = blank_id
@@ -83,30 +181,13 @@ class MultiTransformer(nn.Module):
             if add_special_token_list:
                 self.start_id_of_special_tokens = len(token2id) - len(add_special_token_list)
 
-        encoder_class = tables.encoder_classes.get(encoder)
-        encoder = encoder_class(input_size=input_size, **encoder_conf)
-        encoder_output_size = encoder.output_size()
-        if decoder is not None:
-            decoder_class = tables.decoder_classes.get(decoder)
-            decoder = decoder_class(
-                vocab_size=vocab_size,
-                encoder_output_size=encoder_output_size,
-                multi_embed_num=kwargs.get("multi_embed_num", len(add_special_token_list)),
-                **decoder_conf
-            )
-        if ctc_weight > 0.0:
-
-            if ctc_conf is None:
-                ctc_conf = {}
-
-            ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
-
         self.vocab_size = vocab_size
         self.ignore_id = ignore_id
         self.ctc_weight = ctc_weight
         self.specaug = specaug
         self.normalize = normalize
         self.encoder = encoder
+        self.asd = asd
 
         if not hasattr(self.encoder, "interctc_use_conditioning"):
             self.encoder.interctc_use_conditioning = False
@@ -147,13 +228,13 @@ class MultiTransformer(nn.Module):
         self.length_normalized_loss = length_normalized_loss
         self.beam_search = None
 
-
     def forward(
         self,
         speech: torch.Tensor,
         speech_lengths: torch.Tensor,
         text: torch.Tensor,
         text_lengths: torch.Tensor,
+        text_language: torch.Tensor,
         **kwargs,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
         """Encoder + Decoder + Calc loss
@@ -168,8 +249,14 @@ class MultiTransformer(nn.Module):
         if len(speech_lengths.size()) > 1:
             speech_lengths = speech_lengths[:, 0]
 
-        text_language = kwargs["text_language"]
         batch_size = speech.shape[0]
+        anchor = kwargs["anchor"]
+
+        anchor_out, _  = self.anchor_model.encode(anchor, speech_lengths)
+        intermediate_anchor = None
+        if isinstance(anchor_out, tuple):
+            intermediate_anchor = anchor_out[1]
+            anchor_out = anchor_out[0]
 
         # 1. Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
@@ -177,6 +264,33 @@ class MultiTransformer(nn.Module):
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
+
+        # 拼接Xa
+        if intermediate_outs is not None:
+            intermediate_out_list = [out.unsqueeze(1) for _, out in intermediate_outs]
+            X_text = torch.cat(intermediate_out_list, dim=1)
+            intermediate_anchor_list = [out.unsqueeze(1) for _, out in intermediate_anchor]
+            X_pron = torch.cat(intermediate_anchor_list, dim=1)
+
+        else:
+            X_text = encoder_out.unsqueeze(1)
+            X_pron = anchor_out.unsqueeze(1)
+
+        Xar, _ = self.asd(X_text, X_pron, encoder_out_lens)
+
+        loss_dal, acc_dal, dal_out = None, None, None
+        # 有效计数
+        effective_count = text_language.ne(-1).sum().item()
+
+
+
+        loss_dal, acc_dal, dal_out = self.asd.calculate_loss(Xar, text_language)
+
+
+        # decoder_input = torch.cat([encoder_out, Xdnn], dim=-1)
+        decoder_input = encoder_out
+        decoder_input_lens = encoder_out_lens
+
 
         loss_att, acc_att, cer_att, wer_att = None, None, None, None
         loss_ctc, cer_ctc = None, None
@@ -215,8 +329,9 @@ class MultiTransformer(nn.Module):
             loss_ctc = (1 - self.interctc_weight) * loss_ctc + self.interctc_weight * loss_interctc
 
         # decoder: Attention decoder branch
-        loss_att, acc_att, cer_att, wer_att, loss_score = self._calc_att_loss(
-            encoder_out, encoder_out_lens, text, text_lengths, text_language
+        langauge_emb = Xar.clone()
+        loss_att, acc_att, cer_att, wer_att = self._calc_att_loss(
+            decoder_input, decoder_input_lens, text, text_lengths, langauge_emb, text_language
         )
 
         # 3. CTC-Att loss definition
@@ -227,14 +342,20 @@ class MultiTransformer(nn.Module):
         else:
             loss = self.ctc_weight * loss_ctc + (1 - self.ctc_weight) * loss_att
 
-        loss = loss + loss_score
+        # 如果loss_dal不是Nan则加入到loss中
+        if loss_dal is not None:
+            loss = loss + loss_dal
+
 
         # Collect Attn branch stats
         stats["loss_att"] = loss_att.detach() if loss_att is not None else None
         stats["acc"] = acc_att
         stats["cer"] = cer_att
         stats["wer"] = wer_att
-        stats["loss_score"] = loss_score.detach() if loss_score is not None else None
+        stats["loss_dal"] = loss_dal.detach() if loss_dal is not None else None
+        stats["acc_dal"] = acc_dal
+        stats["eff_num"] = effective_count
+
         # Collect total loss stats
         stats["loss"] = torch.clone(loss.detach())
 
@@ -258,21 +379,34 @@ class MultiTransformer(nn.Module):
         """
         with autocast(False):
 
-            # Data augmentation
-            if self.specaug is not None and self.training:
+            # 如果encoder的embed是Hubert/Wav2Vec2的embed则需要先进行cnn再做增强
+            if isinstance(self.encoder.embed, HubertFeatureEncoder):
+                speech = speech.transpose(1, 2)
+                speech, speech_lengths = self.encoder.feature_extractor_forward(speech, speech_lengths)
+                speech, pos_emb = speech
                 speech, speech_lengths = self.specaug(speech, speech_lengths)
+                speech = (speech, pos_emb)
+                if self.encoder.interctc_use_conditioning:
+                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths, ctc=self.ctc)
+                else:
+                    encoder_out, encoder_out_lens, _ = self.encoder.encoder_forward(speech, speech_lengths)
+            else:
+                # Data augmentation
+                if self.specaug is not None and self.training:
+                    speech, speech_lengths = self.specaug(speech, speech_lengths)
 
-            # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
-            if self.normalize is not None:
-                speech, speech_lengths = self.normalize(speech, speech_lengths)
+                # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
+                if self.normalize is not None:
+                    speech, speech_lengths = self.normalize(speech, speech_lengths)
 
-        # Forward encoder
-        # feats: (Batch, Length, Dim)
-        # -> encoder_out: (Batch, Length2, Dim2)
-        if self.encoder.interctc_use_conditioning:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
-        else:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
+                # Forward encoder
+                # feats: (Batch, Length, Dim)
+                # -> encoder_out: (Batch, Length2, Dim2)
+                if self.encoder.interctc_use_conditioning:
+                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
+                else:
+                    encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
+
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
@@ -283,6 +417,7 @@ class MultiTransformer(nn.Module):
 
         return encoder_out, encoder_out_lens
 
+
     def _calc_att_loss(
         self,
         encoder_out: torch.Tensor,
@@ -290,12 +425,13 @@ class MultiTransformer(nn.Module):
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
         text_language: torch.Tensor,
+        text_language_label: torch.Tensor,
     ):
         ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id)
         ys_in_lens = ys_pad_lens + 1
 
         # 1. Forward decoder
-        decoder_out, _, decorrelation_penalty= self.decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens, text_language)
+        decoder_out, _ = self.decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens, text_language, text_language_label=text_language_label)
 
         # 2. Compute attention loss
         loss_att = self.criterion_att(decoder_out, ys_out_pad)
@@ -312,7 +448,7 @@ class MultiTransformer(nn.Module):
             ys_hat = decoder_out.argmax(dim=-1)
             cer_att, wer_att = self.error_calculator(ys_hat.cpu(), ys_pad.cpu())
 
-        return loss_att, acc_att, cer_att, wer_att, decorrelation_penalty
+        return loss_att, acc_att, cer_att, wer_att
 
     def _calc_ctc_loss(
         self,
@@ -432,17 +568,11 @@ class MultiTransformer(nn.Module):
         if isinstance(encoder_out, tuple):
             encoder_out = encoder_out[0]
 
-        text_language = kwargs["text_language"][0]
-        language_id = tokenizer.token2id.get(text_language, self.sos) - self.start_id_of_special_tokens
-        language_id = torch.tensor([language_id], device=encoder_out.device)
-        beam_search_dict = {'language_id': language_id}
-
         # c. Passed the encoder result and the beam search
         nbest_hyps = self.beam_search(
             x=encoder_out[0],
             maxlenratio=kwargs.get("maxlenratio", 0.0),
             minlenratio=kwargs.get("minlenratio", 0.0),
-            **beam_search_dict
         )
 
         nbest_hyps = nbest_hyps[: self.nbest]

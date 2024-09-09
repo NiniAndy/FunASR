@@ -4,12 +4,12 @@
 CUDA_VISIBLE_DEVICES="0,1,2,3"
 
 # general configuration
-feats_dir="/ssd/zhuang/code/FunASR2024/examples/kespeech/DATA" #feature output dictionary
+feats_dir="/ssd/zhuang/code/FunASR/examples/kespeech/DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=2
-stop_stage=2
+stage=0
+stop_stage=0
 
 # feature configuration
 nj=32
@@ -54,31 +54,45 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     # local/aishell2_data_prep.py --raw_data ${raw_data} --outpath ${feats_dir}
     # local/aishell2_data_prep.sh ${raw_data}/data_aishell2/wav ${raw_data}/data_aishell2/transcript ${raw_data}/devNtest ${feats_dir}
 
-    for x in ES/Beijing/train ES/Beijing/dev ES/Beijing/test ES/Ji-Lu/train ES/Ji-Lu/dev ES/Ji-Lu/test ES/Jiang-Huai/train ES/Jiang-Huai/dev ES/Jiang-Huai/test ES/Jiao-Liao/train ES/Jiao-Liao/dev ES/Jiao-Liao/test; do
-        echo "processing ${feats_dir}/data/${x}"
-        utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
-        mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
+#    for x in ES/Beijing/train ES/Beijing/dev ES/Beijing/test ES/Ji-Lu/train ES/Ji-Lu/dev ES/Ji-Lu/test ES/Jiang-Huai/train ES/Jiang-Huai/dev ES/Jiang-Huai/test ES/Jiao-Liao/train ES/Jiao-Liao/dev ES/Jiao-Liao/test; do
+#        echo "processing ${feats_dir}/data/${x}"
+#        utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
+#        mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
+#
+#        # convert wav.scp text to jsonl
+#        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
+#        python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
+#        ++data_type_list='["source", "target"]' \
+#        ++jsonl_file_out=${feats_dir}/data/${x}/audio_datasets.jsonl \
+#        ${scp_file_list_arg}
+#    done
+#
+#    for x in ES/Lan-Yin/train ES/Lan-Yin/dev ES/Lan-Yin/test ES/Mandarin/train ES/Mandarin/dev ES/Mandarin/test ES/Northeastern/train ES/Northeastern/dev ES/Northeastern/test ES/Southwestern/train ES/Southwestern/dev ES/Southwestern/test ES/Zhongyuan/train ES/Zhongyuan/dev ES/Zhongyuan/test; do
+#        echo "processing ${feats_dir}/data/${x}"
+#        utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
+#        mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
+#
+#        # convert wav.scp text to jsonl
+#        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
+#        python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
+#        ++data_type_list='["source", "target"]' \
+#        ++jsonl_file_out=${feats_dir}/data/${x}/audio_datasets.jsonl \
+#        ${scp_file_list_arg}
+#    done
+
+    for x in WD/test2; do
+        echo "processing ${feats_dir}/data5/${x}"
+        utils/text2token.py -n 1 -s 1 ${feats_dir}/data5/${x}/text > ${feats_dir}/data5/${x}/text.org
+        mv ${feats_dir}/data5/${x}/text.org ${feats_dir}/data5/${x}/text
 
         # convert wav.scp text to jsonl
-        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
+        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data5/${x}/wav.scp\",\"${feats_dir}/data5/${x}/text\"]'"
         python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
         ++data_type_list='["source", "target"]' \
-        ++jsonl_file_out=${feats_dir}/data/${x}/audio_datasets.jsonl \
+        ++jsonl_file_out=${feats_dir}/data5/${x}/audio_datasets.jsonl \
         ${scp_file_list_arg}
     done
 
-    for x in ES/Lan-Yin/train ES/Lan-Yin/dev ES/Lan-Yin/test ES/Mandarin/train ES/Mandarin/dev ES/Mandarin/test ES/Northeastern/train ES/Northeastern/dev ES/Northeastern/test ES/Southwestern/train ES/Southwestern/dev ES/Southwestern/test ES/Zhongyuan/train ES/Zhongyuan/dev ES/Zhongyuan/test; do
-        echo "processing ${feats_dir}/data/${x}"
-        utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
-        mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
-
-        # convert wav.scp text to jsonl
-        scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
-        python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
-        ++data_type_list='["source", "target"]' \
-        ++jsonl_file_out=${feats_dir}/data/${x}/audio_datasets.jsonl \
-        ${scp_file_list_arg}
-    done
 fi
 
 

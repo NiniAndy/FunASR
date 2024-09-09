@@ -401,7 +401,10 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
         # entry.update({"source_len": source_len})
         if self.text_language_flag:
             text_language = item["text_language"]
-            text_language = self.text_language_vocab[text_language]
+            if text_language is None:
+                text_language = -1
+            else:
+                text_language = self.text_language_vocab[text_language]
             text_language = torch.tensor([text_language], dtype=torch.int32)
             entry.update({"text_language": text_language})
         if self.spurious_label_flag:
@@ -411,7 +414,6 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
             entry.update({"spurious_label": spurious_label, "spurious_label_lengths": spurious_label_lengths})
 
         return entry
-
 
 
 

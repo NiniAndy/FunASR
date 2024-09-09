@@ -177,8 +177,8 @@ class DecoderLayerExport(nn.Module):
         return x, tgt_mask, memory, memory_mask
 
 
-@tables.register("decoder_classes", "TransformerMultiDecoder")
-class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
+@tables.register("decoder_classes", "TransformerMultiFFNDecoder")
+class TransformerMultiFFNDecoder(nn.Module, BatchScorerInterface):
     """Base class of Transfomer decoder module.
 
     Args:
@@ -223,34 +223,48 @@ class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
         super().__init__()
 
         attention_dim = encoder_output_size
-        lan_embed = kwargs.get("lan_embed", True)
-        if lan_embed:
-            self.lan_embed = torch.nn.Embedding(multi_embed_num, attention_dim)
-        else:
-            self.lan_embed = None
+
+
+        self.lan_embed = torch.nn.Embedding(multi_embed_num, attention_dim)
+
 
         if input_layer == "embed":
-            multi_embed = []
-            for i in range(multi_embed_num):
-                multi_embed.append(
-                    torch.nn.Sequential(
-                        torch.nn.Embedding(vocab_size, attention_dim),
-                        pos_enc_class(attention_dim, positional_dropout_rate),
-                    )
-                )
-            # self.ori_embed = torch.nn.Sequential(
-            #             torch.nn.Embedding(vocab_size, attention_dim),
-            #             pos_enc_class(attention_dim, positional_dropout_rate),
-            #         )
-            self.multi_embed = nn.ModuleList(multi_embed)
+            self.embed = torch.nn.Sequential(
+                torch.nn.Embedding(vocab_size, attention_dim),
+                pos_enc_class(attention_dim, positional_dropout_rate),
+            )
+        elif input_layer == "linear":
+            self.embed = torch.nn.Sequential(
+                torch.nn.Linear(vocab_size, attention_dim),
+                torch.nn.LayerNorm(attention_dim),
+                torch.nn.Dropout(dropout_rate),
+                torch.nn.ReLU(),
+                pos_enc_class(attention_dim, positional_dropout_rate),
+            )
         else:
             raise ValueError(f"only 'embed' or 'linear' is supported: {input_layer}")
+
+        # if input_layer == "embed":
+        #     multi_embed = []
+        #     for i in range(multi_embed_num):
+        #         multi_embed.append(
+        #             torch.nn.Sequential(
+        #                 torch.nn.Embedding(vocab_size, attention_dim),
+        #                 pos_enc_class(attention_dim, positional_dropout_rate),
+        #             )
+        #         )
+        #     self.ori_embed = torch.nn.Sequential(
+        #                 torch.nn.Embedding(vocab_size, attention_dim),
+        #                 pos_enc_class(attention_dim, positional_dropout_rate),
+        #             )
+        #     self.multi_embed = nn.ModuleList(multi_embed)
+        # else:
+        #     raise ValueError(f"only 'embed' or 'linear' is supported: {input_layer}")
 
         self.normalize_before = normalize_before
         if self.normalize_before:
             self.after_norm = LayerNorm(attention_dim)
 
-        self.embed_merge = MultiChannelAttention(attention_heads, attention_dim, multi_embed_num, self_attention_dropout_rate)
 
         self.decoders = repeat(
             num_blocks,
@@ -266,36 +280,17 @@ class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
         )
 
         if use_output_layer:
+            # self.output_layer = torch.nn.Linear(attention_dim, vocab_size)
+            multi_output_layer = []
+            for i in range(multi_embed_num):
+                multi_output_layer.append(
+                    torch.nn.Linear(attention_dim, attention_dim)
+                    )
+            self.multi_output_layer = nn.ModuleList(multi_output_layer)
+            self.embed_merge = MultiChannelAttention(attention_heads, attention_dim, multi_embed_num, self_attention_dropout_rate)
             self.output_layer = torch.nn.Linear(attention_dim, vocab_size)
         else:
             self.output_layer = None
-
-    def decorrelation_loss(self, emb_matrix):
-        """
-        计算装饰相关正则化损失。
-        参数:
-        - emb_matrix: 嵌入矩阵，形状为 [batch_size, num_embeddings, dimension]
-
-        返回:
-        - decorr_loss: 装饰相关正则化损失
-        """
-        batch_size, num_embeddings, _ = emb_matrix.shape
-
-        # 计算协方差矩阵
-        emb_mean = torch.mean(emb_matrix, dim=2, keepdim=True)  # 沿着维度求均值
-        emb_centered = emb_matrix - emb_mean
-        cov_matrix = torch.einsum('bik,bjk->bij', emb_centered, emb_centered) / emb_centered.shape[2]
-
-        # 生成非对角线掩码，需要匹配批次大小
-        eye = torch.eye(num_embeddings, device=emb_matrix.device)
-        non_diag_mask = (1 - eye).bool().unsqueeze(0)  # [1, num_embeddings, num_embeddings]
-        non_diag_mask = non_diag_mask.expand(batch_size, -1, -1)  # 扩展到批量大小
-
-        # 提取协方差矩阵的非对角线元素并计算损失
-        non_diag_cov = cov_matrix[non_diag_mask]
-        decorr_loss = torch.mean(non_diag_cov ** 2)  # 对所有非对角线元素求平方和的平均
-
-        return decorr_loss
 
     def forward(
             self,
@@ -305,7 +300,7 @@ class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
             ys_in_lens: torch.Tensor,
             language: torch.Tensor,
             text_language_label = None,
-    ) :
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Forward decoder.
 
         Args:
@@ -338,47 +333,28 @@ class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
             padlen = memory.shape[1] - memory_mask.shape[-1]
             memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
 
-        # ori_x = self.ori_embed(tgt)
-
-        x = [embed(tgt) for embed in self.multi_embed]  # [(batch, maxlen_out, feat)] * multi_embed_num
-        x = torch.stack(x, dim=1)  # (batch, multi_embed_num, maxlen_out, feat)
-        bsz, ch,  seq_len, dim = x.size()
-        x = x.view(bsz, ch*seq_len, dim)
-
-        embedding = x.view(bsz*seq_len, ch, dim)
-        decorrelation_penalty = self.decorrelation_loss(embedding)
-
-
-        if self.lan_embed is not None:
-            language_emb = self.lan_embed(language)  # (batch, feat)
-        else:
-            language_emb = language
-        # channel merge
-        x = self.embed_merge(language_emb, x, x, tgt_mask)
-
-        # if text_language_label is not None:
-        #     # 让-1的位置为mask掉，其他值的位置不mask
-        #     embed_merge_mask = text_language_label == -1
-        #     embed_merge_mask = embed_merge_mask.unsqueeze(1).expand(-1, x.size(1), -1)
-        #     x = x.masked_fill(embed_merge_mask, 0)
-        #     # 让-1的位置系数为0，其他值的位置系数为0.5
-        #     x = x * 0.5
-        #     # 让ori_x在-1的位置乘0.5，其他位置不改变
-        #     mask_ori_x = ori_x.masked_fill(embed_merge_mask, 0)
-        #     mask_ori_x = mask_ori_x * 0.5
-        #     re_ori_x = ori_x.masked_fill(~embed_merge_mask, 0)
-        #     ori_x = re_ori_x + mask_ori_x
-        #
-        # x = x + ori_x
+        x = self.embed(tgt)
 
         x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
         if self.normalize_before:
             x = self.after_norm(x)
         if self.output_layer is not None:
+            # x = self.output_layer(x)
+
+            multi_x = [output_layer(x) for output_layer in self.multi_output_layer]
+            x = torch.stack(multi_x, dim=1)  # (batch, multi_embed_num, maxlen_out, vocab_size)
+            bsz, ch, seq_len, vocab_size = x.size()
+            x = x.view(bsz, ch * seq_len, vocab_size)
+            if self.lan_embed is not None:
+                language_emb = self.lan_embed(language)  # (batch, feat)
+            else:
+                language_emb = language
+            x = self.embed_merge(language_emb, x, x, tgt_mask)
+
             x = self.output_layer(x)
 
         olens = tgt_mask.sum(1)
-        return x, olens, decorrelation_penalty
+        return x, olens
 
     def forward_one_step(
             self,
@@ -406,13 +382,9 @@ class TransformerMultiDecoder(nn.Module, BatchScorerInterface):
         bsz, ch, seq_len, dim = x.size()
         x = x.view(bsz, ch * seq_len, dim)
 
-        if self.lan_embed is not None:
-            language_emb = self.lan_embed(language)  # (batch, feat)
-        else:
-            language_emb = language
-
+        language = self.lan_embed(language)  # (batch, feat)
         # channel merge
-        x = self.embed_merge(language_emb, x, x, tgt_mask)
+        x = self.embed_merge(language, x, x, tgt_mask)
 
         if cache is None:
             cache = [None] * len(self.decoders)

@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: Conformer
+model: ConformerAnchorContrastAr
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -30,9 +30,14 @@ encoder_conf:
     macaron_style: true
     use_cnn_module: true
     cnn_module_kernel: 15
+    interctc_layer_idx: [6, 9, 12]
+
+
+anchor_conf:
+  config_path: "/ssd/zhuang/code/FunASR/examples/aishell2/conformer/exp/conformer_aishell2/"
 
 # decoder
-decoder: TransformerDecoder
+decoder: TransformerMultiDecoder
 decoder_conf:
     attention_heads: 4
     linear_units: 2048
@@ -41,10 +46,26 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
+    lan_embed: False
+    multi_embed_num: 4
 
 
-# frontend related
-frontend: WavFrontend
+asd_conf:
+    loss_type: "ce"
+    encoder_conf:
+        output_size: 256
+        attention_heads: 4
+        linear_units: 2048
+        num_blocks: 2
+        dropout_rate: 0.1
+        attention_dropout_rate: 0.0
+        input_layer: linear
+        normalize_before: true
+        pos_enc_layer_type: 'no_pos'
+        positional_dropout_rate: 0.1
+
+
+frontend: DoubleWavFrontend
 frontend_conf:
     fs: 16000
     window: hamming
@@ -84,21 +105,8 @@ scheduler: warmuplr
 scheduler_conf:
    warmup_steps: 30000
 
-#dataset: AudioDataset
-#dataset_conf:
-#    index_ds: IndexDSJsonl
-#    batch_sampler: EspnetStyleBatchSampler
-#    batch_type: example # example or length
-#    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
-#    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
-#    buffer_size: 1024
-#    shuffle: True
-#    num_workers: 4
-#    preprocessor_speech: SpeechPreprocessSpeedPerturb
-#    preprocessor_speech_conf:
-#      speed_perturb: [0.9, 1.0, 1.1]
 
-dataset: AudioWithDialectDataset
+dataset: AudioWithDialectDatasetAndAnchor
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
@@ -111,6 +119,8 @@ dataset_conf:
     preprocessor_speech: SpeechPreprocessSpeedPerturb
     preprocessor_speech_conf:
       speed_perturb: [0.9, 1.0, 1.1]
+
+
 
 tokenizer: CharTokenizer
 tokenizer_conf:

@@ -6,13 +6,13 @@ CUDA_VISIBLE_DEVICES="0,1,2,3"
 # general configuration
 # feats_dir="../DATA" #feature output dictionary
 # kespeech
-feats_dir=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/
+feats_dir=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4
 exp_dir=`pwd`
 # feature configuration
 nj=32
 inference_device="cuda" #"cpu"
 inference_checkpoint="model.pt.avg10"
-inference_scp="wav.scp"
+inference_scp="audio_datasets.jsonl"
 inference_batch_size=1
 workspace=`pwd`
 master_port=12345
@@ -27,15 +27,17 @@ set -o pipefail
 
 
 # test_sets="test"
-# test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test"
-test_sets=ES/Southwestern/test
+#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
+#test_sets=ES/Southwestern/test
+test_sets="WD/test"
 
-config_path=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_exp1
-model=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/model.pt.avg10
-token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt
-cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn
+config_path=/ssd/zhuang/code/FunASR/examples/kespeech/conformer_lora/exp/conformer_lora_asrNar_exp4
+model=/ssd/zhuang/code/FunASR/examples/kespeech/conformer_lora/exp/conformer_lora_asrNar_exp4/model.pt.avg10
 use_lora=true
-lora_details=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/lora_config.json
+lora_details=/ssd/zhuang/code/FunASR/examples/kespeech/conformer_lora/exp/conformer_lora_asrNar_exp4/lora_config.json
+token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/tokens.txt
+add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt
+
 
 
 
@@ -54,19 +56,21 @@ else
 fi
 
 for dset in ${test_sets}; do
-    data_dir="${feats_dir}/data/${dset}"
-    key_file=${data_dir}/${inference_scp}
 
-    inference_dir=/ssd/zhuang/code/FunASR/examples/kespeech/paraformer/exp/baseline_paraformer_conformer_12e_6d_2048_256_zh_char_SW-LoRA-FT/inference/${dset}
+    inference_dir=/ssd/zhuang/code/FunASR/examples/kespeech/conformer_lora/exp/conformer_lora_asrNar_exp4/inference/${dset}
     _logdir="${inference_dir}/logdir"
 
     echo "inference_dir: ${inference_dir}"
     mkdir -p "${_logdir}"
 
+    data_dir="${feats_dir}/${dset}"
+    key_file=${data_dir}/${inference_scp}
+
+    file_ext="${key_file##*.}"
 
     split_scps=
     for JOB in $(seq "${nj}"); do
-        split_scps+=" ${_logdir}/keys.${JOB}.scp"
+        split_scps+=" ${_logdir}/keys.${JOB}.${file_ext}"
     done
     utils/split_scp.pl "${key_file}" ${split_scps}
 
@@ -82,9 +86,10 @@ for dset in ${test_sets}; do
             --config-name="config.yaml" \
             ++init_param="${model}" \
             ++tokenizer_conf.token_list="${token_list}" \
-            ++frontend_conf.cmvn_file="${cmvn_file}" \
-            ++input="${_logdir}/keys.${JOB}.scp" \
+            ++input="${_logdir}/keys.${JOB}.${file_ext}" \
             ++output_dir="${inference_dir}/${JOB}" \
+            ++tokenizer_conf.add_special_token_list="${add_special_token_list}" \
+            ++text_language_vocab_path=${add_special_token_list} \
             ++device="${inference_device}" \
             ++use_lora=${use_lora} \
             ++lora_details=${lora_details} \

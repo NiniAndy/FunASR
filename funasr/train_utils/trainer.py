@@ -118,6 +118,9 @@ class Trainer:
         self.val_acc_step_or_eoch = {}
         self.val_loss_step_or_eoch = {}
 
+        self.dialect_flag = None
+        self.val_acc_dal_avg = 0.0
+
         self.reset_gpu_cache = kwargs.get("reset_gpu_cache", False)
         self.start_data_split_i = 0
         self.start_step = 0
@@ -213,6 +216,7 @@ class Trainer:
                     logging.info(
                         f"No improvement in acc: {self.val_acc_step_or_eoch[ckpt_name]:.4f} < {self.val_acc_step_or_eoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}"
                     )
+
             elif self.avg_keep_nbest_models_type == "loss":
                 if (
                     self.val_loss_step_or_eoch[ckpt_name]
@@ -228,8 +232,14 @@ class Trainer:
                     logging.info(
                         f"No improvement in loss: {self.val_loss_step_or_eoch[ckpt_name]:.4f} > {self.val_loss_step_or_eoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}"
                     )
+
             else:
                 print("Undo")
+
+            if self.dialect_flag:
+                logging.info(f"Current dialect acc: {self.val_acc_dal_avg:.4f}")
+
+
             self.saved_ckpts[ckpt_name] = getattr(
                 self, f"val_{self.avg_keep_nbest_models_type}_step_or_eoch"
             )[ckpt_name]
@@ -588,6 +598,32 @@ class Trainer:
                     self.val_acc_avg = (
                         self.val_acc_avg * batch_idx + stats["acc"].detach().cpu().item()
                     ) / (batch_idx + 1)
+
+                if "acc_dal" in stats and "eff_num" not in stats:
+                    self.dialect_flag = True
+                    self.val_acc_dal_avg = (
+                        self.val_acc_dal_avg * batch_idx + stats["acc_dal"].detach().cpu().item()
+                    ) / (batch_idx + 1)
+
+                if "acc_dal" in stats and "eff_num" in stats:
+                    self.dialect_flag = True
+
+                    # 获取当前批次的准确率和有效样本数量
+                    current_acc_dal = stats["acc_dal"].detach().cpu().item()
+                    current_eff_num = stats["eff_num"]
+
+                    # 初始化累计准确率和样本数
+                    if not hasattr(self, 'total_eff_num'):
+                        self.total_eff_num = 0.0
+                        self.val_acc_dal_sum = 0.0
+
+                    # 更新累计准确率和样本数
+                    self.total_eff_num += current_eff_num
+                    self.val_acc_dal_sum += current_acc_dal * current_eff_num
+
+                    # 计算加权平均准确率
+                    self.val_acc_dal_avg = self.val_acc_dal_sum / self.total_eff_num
+
                 if self.use_ddp or self.use_fsdp:
                     val_loss_avg = torch.tensor(self.val_loss_avg, dtype=torch.float32).to(
                         self.device
@@ -595,10 +631,18 @@ class Trainer:
                     val_acc_avg = torch.tensor(self.val_acc_avg, dtype=torch.float32).to(
                         self.device
                     )
+                    val_acc_dal_avg = torch.tensor(self.val_acc_dal_avg, dtype=torch.float32).to(
+                        self.device
+                    )
                     dist.all_reduce(val_loss_avg, op=dist.ReduceOp.SUM)
                     dist.all_reduce(val_acc_avg, op=dist.ReduceOp.SUM)
+                    if self.dialect_flag:
+                        dist.all_reduce(val_acc_dal_avg, op=dist.ReduceOp.SUM)
+
                     self.val_loss_avg = val_loss_avg.detach().cpu().item() / self.world_size
                     self.val_acc_avg = val_acc_avg.detach().cpu().item() / self.world_size
+                    if self.dialect_flag:
+                        self.val_acc_dal_avg = val_acc_dal_avg.detach().cpu().item() / self.world_size
                 time5 = time.perf_counter()
                 batch_num_epoch = 1
                 if hasattr(dataloader_val, "__len__"):

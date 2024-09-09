@@ -1,0 +1,94 @@
+# lightning 框架的配置文件
+solver_conf:
+    devices: [0]
+    max_epochs: 200
+    precision: "medium"
+    strategy: 'ddp'  # dp
+    accelerator: "gpu"
+    accumulate_grad_batches: 4
+    gradient_clip: 1
+    train_batch_size: 2
+    valid_batch_size: 2
+    test_batch_size: 1
+    num_workers: 1
+
+save_conf:
+    name: "ctc_paraformer"
+    save_top_k: 20
+    every_n_epochs: 1
+    save_dir: "tb_logs"
+
+inference_conf:
+    use_cuda: true
+    inference_type: 'greedy_search'# 'greedy_search' 'beam_search' 对inference起作用, 目前beam search非并行，test会很慢
+    beam_width: 3  # beam search 搜索宽度
+    beam_nbest: 3  # beam search 保留结果，test阶段强制为1
+    c_weight: 1  # 长度惩罚系数
+    view_nbest: False  # inference 阶段展示nbest个结果
+
+# demo
+#config:  "/ssd/zhuang/code/FunASR/examples/kespeech/conformer_ar/conf/conformer_ar_only.yaml"
+##init_param:  "${init_param}"
+#train_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/dev/audio_datasets.jsonl"
+#valid_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/dev/audio_datasets.jsonl"
+#
+#tokenizer_conf:
+#    token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt"
+#    add_special_token_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt"
+#
+#frontend_conf:
+#    cmvn_file: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/train/am.mvn"
+#    anchor_file: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/train/am.mvn"
+#
+#text_language_vocab_path: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt"
+##use_lora: true
+##lora_details: ${lora_details}
+##lora_bias: lora_only
+#output_dir: /ssd/zhuang/code/FunASR/demo/debug
+
+
+
+# conformer_contrast
+#config:  "/ssd/zhuang/code/FunASR/examples/kespeech/conformer_ar/conf/conformer_contrast.yaml"
+#train_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/dev/audio_datasets.jsonl"
+#valid_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/dev/audio_datasets.jsonl"
+#tokenizer_conf:
+#    token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt"
+#    add_special_token_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt"
+#frontend_conf:
+#    cmvn_file: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/train/am.mvn"
+#    anchor_file: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/WD/train/am.mvn"
+#text_language_vocab_path: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt"
+#output_dir: /ssd/zhuang/code/FunASR/demo/debug
+
+
+# conformer_ar_only
+#config:  "/ssd/zhuang/code/FunASR/examples/kespeech/conformer_ar/conf/conformer_ar_only.yaml"
+#train_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/WD/dev/audio_datasets.jsonl"
+#valid_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/WD/dev/audio_datasets.jsonl"
+#tokenizer_conf:
+#    token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt"
+#    add_special_token_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/zh_token_list/char/dialects.txt"
+#text_language_vocab_path: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/zh_token_list/char/dialects.txt"
+#output_dir: /ssd/zhuang/code/FunASR/demo/debug
+
+
+# ctc_paraformer
+#config:  "/ssd/zhuang/code/FunASR/examples/aishell/paraformer/conf/ctc_paraformer.yaml"
+#train_data_set_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/dev/audio_datasets.jsonl"
+#valid_data_set_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/dev/audio_datasets.jsonl"
+#tokenizer_conf:
+#    token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt"
+#output_dir: /ssd/zhuang/code/FunASR/demo/debug
+
+#  multi_emb_conformer
+config:  "/ssd/zhuang/code/FunASR/examples/kespeech/conformer/conf/conformer_multi_embed_decoder.yaml"
+train_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/WD/dev/audio_datasets.jsonl"
+valid_data_set_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/WD/dev/audio_datasets.jsonl"
+tokenizer_conf:
+    token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/char/tokens.txt"
+    add_special_token_list: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/zh_token_list/char/dialects.txt"
+text_language_vocab_path: "/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data5/zh_token_list/char/dialects.txt"
+output_dir: /ssd/zhuang/code/FunASR/demo/debug
+
+

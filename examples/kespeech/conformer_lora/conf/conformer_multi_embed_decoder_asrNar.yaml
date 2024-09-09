@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: Conformer
+model: MultiEmbConformerAsrNAr
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -30,9 +30,10 @@ encoder_conf:
     macaron_style: true
     use_cnn_module: true
     cnn_module_kernel: 15
+    interctc_layer_idx: [6, 9, 12]
 
 # decoder
-decoder: TransformerDecoder
+decoder: TransformerMultiDecoder
 decoder_conf:
     attention_heads: 4
     linear_units: 2048
@@ -41,6 +42,9 @@ decoder_conf:
     positional_dropout_rate: 0.1
     self_attention_dropout_rate: 0.0
     src_attention_dropout_rate: 0.0
+    lan_embed: False
+multi_embed_num: 3
+
 
 
 # frontend related
@@ -73,13 +77,18 @@ specaug_conf:
 train_conf:
   accum_grad: 1
   grad_clip: 5
-  max_epoch: 60
+  max_epoch: 30
   keep_nbest_models: 10
   log_interval: 150
 
 optim: adam
 optim_conf:
    lr: 0.0005
+#scheduler: partition_warmuplr
+#scheduler_conf:
+#   warmup_steps: 30000
+#   enable_warmup: [False, True]
+
 scheduler: warmuplr
 scheduler_conf:
    warmup_steps: 30000
@@ -103,7 +112,7 @@ dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
     batch_type: length # example or length
-    batch_size: 50000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_size: 35000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

@@ -135,6 +135,58 @@ class EncoderLayer(nn.Module):
 
         return x, mask
 
+class QKVEncoderLayer(nn.Module):
+    def __init__(
+            self,
+            size,
+            self_attn,
+            feed_forward,
+            dropout_rate,
+            normalize_before=True,
+            concat_after=False,
+            stochastic_depth_rate=0.0,
+    ):
+        """Construct an EncoderLayer object."""
+        super().__init__()
+        self.self_attn = self_attn
+        self.feed_forward = feed_forward
+        self.norm1 = LayerNorm(size)
+        self.norm2 = LayerNorm(size)
+        self.dropout = nn.Dropout(dropout_rate)
+        self.size = size
+        self.normalize_before = normalize_before
+        self.concat_after = concat_after
+        if self.concat_after:
+            self.concat_linear = nn.Linear(size + size, size)
+        self.stochastic_depth_rate = stochastic_depth_rate
+
+    def forward(self, q, k, v, mask):
+        residual = v
+        if self.normalize_before:
+            q = self.norm1(q)
+            k = self.norm1(k)
+            v = self.norm1(v)
+
+        if self.concat_after:
+            x_concat = torch.cat((v, self.self_attn(q, k, v, mask)), dim=-1)
+            x = residual +  self.concat_linear(x_concat)
+        else:
+            x = residual +  self.dropout(self.self_attn(q, k, v, mask))
+
+        if not self.normalize_before:
+            x = self.norm1(x)
+
+        residual = x
+        if self.normalize_before:
+            x = self.norm2(x)
+
+        x = residual  * self.dropout(self.feed_forward(x))
+
+        if not self.normalize_before:
+            x = self.norm2(x)
+
+        return x, mask
+
 
 @tables.register("encoder_classes", "TransformerEncoder")
 class TransformerEncoder(nn.Module):

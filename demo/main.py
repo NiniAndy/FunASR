@@ -2,7 +2,7 @@ from __future__ import print_function
 
 import yaml
 
-from args import _C as args
+
 from subfunction import inference, test, train, auto_load, resume_train
 
 # 测试直接使用文字作为token
@@ -16,25 +16,41 @@ if __name__ == '__main__':
     mode = "min"
     resume = False
 
+    arg = "/ssd/zhuang/code/FunASR/demo/args.yaml"
+    with open(arg, 'r', encoding='utf-8') as file:
+        args = yaml.safe_load(file)
+
+    model_config = args["config"]
+
+    with open(model_config, 'r', encoding='utf-8') as file:
+        model_configs = yaml.safe_load(file)
+
+    configs = {**model_configs, **args}
+
     if stage == "train":
-        args.merge_from_file("args.yml")
-        with open(args.DATA.config, 'r') as fin:
-            configs = yaml.load(fin, Loader=yaml.FullLoader)
+        train(configs)
 
-        if resume:
-            config_file, check_point = auto_load(ckpt_dir, monitor, mode)
-            resume_train(args, check_point, config_file)
-        else:
-            train(args, configs)
+    pass
 
-
-    elif stage == "test":
-        # config_file, check_point = auto_load(ckpt_dir, monitor, mode)
-        config_file = None
-        check_point = ckpt_dir
-        test(check_point, config_file)
-    elif stage == "inference":
-        config_file, check_point = auto_load(ckpt_dir, monitor, mode)
-        inference(check_point, config_file, "1.wav")
-    else:
-        print("Unsupported {} stage".format(configs.stage))
+    # if stage == "train":
+    #     args.merge_from_file("args.yml")
+    #     with open(args.DATA.config, 'r') as fin:
+    #         kwargs = yaml.load(fin, Loader=yaml.FullLoader)
+    #
+    #     if resume:
+    #         config_file, check_point = auto_load(ckpt_dir, monitor, mode)
+    #         resume_train(args, check_point, config_file)
+    #     else:
+    #         train(args, kwargs)
+    #
+    #
+    # elif stage == "test":
+    #     # config_file, check_point = auto_load(ckpt_dir, monitor, mode)
+    #     config_file = None
+    #     check_point = ckpt_dir
+    #     test(check_point, config_file)
+    # elif stage == "inference":
+    #     config_file, check_point = auto_load(ckpt_dir, monitor, mode)
+    #     inference(check_point, config_file, "1.wav")
+    # else:
+    #     print("Unsupported {} stage".format(kwargs.stage))

@@ -46,7 +46,7 @@ def export_forward(
     if isinstance(encoder_out, tuple):
         encoder_out = encoder_out[0]
 
-    ctc_logits = self.ctc.ctc_lo(encoder_out)
+    ctc_logits = self.ar_ctc.ctc_lo(encoder_out)
     
     return ctc_logits, encoder_out_lens
 

@@ -1,34 +1,55 @@
 import copy
 import os
+import logging
 
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+from funasr.register import tables
 
-from data import dataset
-from data.dataset import collate_fn
-from wenet.utils.file_utils import read_lists, read_non_lang_symbols
-from utils.functions import init_vocab
+
 
 
 class MyDataModule(pl.LightningDataModule):
-    def __init__(self, args, configs):
+    def __init__(self, kwargs):
         super(MyDataModule, self).__init__()
 
-        self.train_conf = configs['dataset_conf']
-        self.cv_conf = copy.deepcopy(self.train_conf)
-        self.cv_conf['speed_perturb'] = False
-        self.cv_conf['spec_aug'] = False
-        self.cv_conf['spec_sub'] = False
-        self.cv_conf['spec_trim'] = False
-        self.cv_conf['shuffle'] = False
+        local_rank = int(os.environ.get("LOCAL_RANK", 0))
 
-        self.test_conf = copy.deepcopy(self.cv_conf)
+        # build tokenizer
+        tokenizer = kwargs.get("tokenizer", None)
+        if tokenizer is not None:
+            tokenizer_class = tables.tokenizer_classes.get(tokenizer)
+            tokenizer = tokenizer_class(**kwargs.get("tokenizer_conf", {}))
+            kwargs["token_list"] = (
+                tokenizer.token_list if hasattr(tokenizer, "token_list") else None
+            )
+            kwargs["token_list"] = (
+                tokenizer.get_vocab() if hasattr(tokenizer, "get_vocab") else kwargs["token_list"]
+            )
+            vocab_size = len(kwargs["token_list"]) if kwargs["token_list"] is not None else -1
+            if vocab_size == -1 and hasattr(tokenizer, "get_vocab_size"):
+                vocab_size = tokenizer.get_vocab_size()
+        else:
+            vocab_size = -1
+        kwargs["tokenizer"] = tokenizer
 
-        self.args = args
-        self.symbol_table, _, self.acc_table, _, self.pny_table, _ = init_vocab(args)
+        # build frontend
+        frontend = kwargs.get("frontend", None)
+        kwargs["input_size"] = None
+        if frontend is not None:
+            frontend_class = tables.frontend_classes.get(frontend)
+            frontend = frontend_class(**kwargs.get("frontend_conf", {}))
+            kwargs["input_size"] = (
+                frontend.output_size() if hasattr(frontend, "output_size") else None
+            )
+        kwargs["frontend"] = frontend
 
-        self.bpe_model = args.DATA.bpe_model
-        self.non_lang_syms = read_non_lang_symbols(args.DATA.non_lang_syms)
+        if local_rank == 0:
+            print ("Build dataloader")
+
+        self.dataset_class = tables.dataset_classes.get(kwargs.get("dataset", "AudioDataset"))
+        self.kwargs = kwargs
+
 
     def prepare_data(self):
         # 通过URL下载数据
@@ -36,58 +57,58 @@ class MyDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         if stage == 'fit' or stage is None:
-            train_lists = read_lists(self.args.DATA.train_data)
-            val_lists = read_lists(self.args.DATA.cv_data)
+            self.train_dataset = self.dataset_class(
+                self.kwargs.get("train_data_set_list"),
+                is_training=True,
+                **self.kwargs.get("dataset_conf"),
+                **self.kwargs
+            )
 
-            self.train_dataset = dataset.SpectrogramDataset(
-                self.train_conf,
-                train_lists,
-                self.symbol_table,
-                self.pny_table,
-                self.acc_table,
-                self.bpe_model,
-                self.non_lang_syms)
-            self.val_dataset = dataset.SpectrogramDataset(
-                self.cv_conf,
-                val_lists,
-                self.symbol_table,
-                self.pny_table,
-                self.acc_table,
-                self.bpe_model,
-                self.non_lang_syms)
+            self.val_dataset = self.dataset_class(
+                self.kwargs.get("valid_data_set_list"),
+                is_training=False,
+                **self.kwargs.get("dataset_conf"),
+                **self.kwargs
+            )
+
             if int(os.environ.get('LOCAL_RANK', 0)) == 0:
                 print('训练集长度: ', len(self.train_dataset))
                 print('验证集长度：', len(self.val_dataset))
 
         if stage == 'test' or stage is None:
-
-            test_lists = read_lists(self.args.DATA.test)
-            self.test_dataset = dataset.SpectrogramDataset(
-                self.test_conf,
-                test_lists,
-                self.symbol_table,
-                self.pny_table,
-                self.acc_table,
-                self.bpe_model,
-                self.non_lang_syms)
-
-            print('测试集长度：', len(self.test_file_list))
+            self.test_dataset = self.dataset_class(
+                self.kwargs.get("test_data_set_list"),
+                is_training=False,
+                **self.kwargs.get("dataset_conf"),
+                **self.kwargs
+            )
 
 
     def train_dataloader(self):
+        batch_sampler = "BatchSampler"
+        batch_sampler_class = tables.batch_sampler_classes.get(batch_sampler)
+        batch_sampler = batch_sampler_class(self.train_dataset, start_step=0, **self.kwargs.get("dataset_conf"))
         return DataLoader(self.train_dataset,
-                          batch_size=self.args.SOLVER.train_batch_size,
-                          num_workers=24,
-                          collate_fn=collate_fn)
+                          collate_fn=self.train_dataset.collator,
+                          batch_size=self.kwargs["solver_conf"]["train_batch_size"],
+                          num_workers=self.kwargs["solver_conf"]["num_workers"],)
 
     def val_dataloader(self):
+        batch_sampler = "BatchSampler"
+        batch_sampler_class = tables.batch_sampler_classes.get(batch_sampler)
+        batch_sampler = batch_sampler_class(self.val_dataset, start_step=0, **self.kwargs.get("dataset_conf"))
         return DataLoader(self.val_dataset,
-                          batch_size=self.args.SOLVER.valid_batch_size,
-                          num_workers=24,
-                          collate_fn=collate_fn)
+                          collate_fn=self.val_dataset.collator,
+                          batch_size=self.kwargs["solver_conf"]["valid_batch_size"],
+                          num_workers=self.kwargs["solver_conf"]["num_workers"],)
+
 
     def test_dataloader(self):
+        batch_sampler = "BatchSampler"
+        batch_sampler_class = tables.batch_sampler_classes.get(batch_sampler)
+        self.kwargs["dataset_conf"]["batch_size"] = 1
+        batch_sampler = batch_sampler_class(self.test_dataset, start_step=0, **self.kwargs.get("dataset_conf"))
         return DataLoader(self.test_dataset,
-                          batch_size=self.args.SOLVER.test_batch_size,
-                          num_workers=24,
-                          collate_fn=collate_fn)
+                          collate_fn=self.test_dataset.collator,
+                          batch_size=1,
+                          num_workers=1,)

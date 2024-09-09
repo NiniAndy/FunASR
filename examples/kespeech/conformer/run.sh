@@ -8,8 +8,8 @@ feats_dir="../DATA/data2" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
-stop_stage=5
+stage=4
+stop_stage=4
 
 # feature configuration
 nj=32
@@ -42,11 +42,11 @@ set -o pipefail
 train_set=WD/train
 valid_set=WD/dev
 #test_sets=MD/test
-#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
-test_sets=WD/test
+test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
+#test_sets=WD/test
 
 config=conformer_multi_embed_decoder.yaml
-model_dir="baseline_$(basename "${config}" .yaml)_${tag}"
+model_dir="conformer_multi_embed_decoder_asrNar_exp7"
 
 
 if [ ${stage} -le -1 ] && [ ${stop_stage} -ge -1 ]; then
@@ -117,10 +117,10 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   echo "log_file: ${log_file}"
 
   # some configurations
-  token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/tokens.txt
+  token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/tokens.txt
   # dialect information
-  add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
-  text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+  add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt
+  text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt
 
   export CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
   gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
@@ -131,6 +131,7 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   ../../../funasr/bin/train.py \
   --config-path "${workspace}/conf" \
   --config-name "${config}" \
+  ++init_param=/ssd/zhuang/code/FunASR/examples/kespeech/conformer/exp/multi_emb_baseline/model.pt.avg10 \
   ++train_data_set_list="${feats_dir}/${train_set}/audio_datasets.jsonl" \
   ++valid_data_set_list="${feats_dir}/${valid_set}/audio_datasets.jsonl" \
   ++frontend_conf.cmvn_file="${feats_dir}/${train_set}/am.mvn" \
@@ -176,10 +177,10 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
     utils/split_scp.pl "${key_file}" ${split_scps}
 
     # some configurations
-    token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/tokens.txt
+    token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/tokens.txt
     # dialect information
-    add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
-    text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data2/zh_token_list/char/dialects.txt
+    add_special_token_list=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt
+    text_language_vocab_path=/ssd/zhuang/code/FunASR/examples/kespeech/DATA/data4/zh_token_list/char/dialects.txt
 
     gpuid_list_array=(${CUDA_VISIBLE_DEVICES//,/ })
     for JOB in $(seq ${nj}); do

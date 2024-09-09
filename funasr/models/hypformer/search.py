@@ -742,7 +742,7 @@ def attention_rescoring(
 ) -> List[DecodeResult]:
     """
         Args:
-            ctc_prefix_results(List[DecodeResult]): ctc prefix beam search results
+            ctc_prefix_results(List[DecodeResult]): ar_ctc prefix beam search results
     """
     sos, eos = model.sos, model.eos
     device = encoder_outs.device
@@ -783,7 +783,7 @@ def attention_rescoring(
                 r_score += r_decoder_out[i][len(hyp) + (prefix_len - 1)][eos]
                 score = score * (1 - reverse_weight) + r_score * reverse_weight
             confidences.append(math.exp(score / (len(hyp) + 1)))
-            # add ctc score
+            # add ar_ctc score
             score += ctc_scores[i] * ctc_weight
             if score > best_score:
                 best_score = score
@@ -815,7 +815,7 @@ def nar_ar_rescore(
 ) -> List[DecodeResult]:
     """
         Args:
-            ctc_prefix_results(List[DecodeResult]): ctc prefix beam search results
+            ctc_prefix_results(List[DecodeResult]): ar_ctc prefix beam search results
     """
     sos, eos = model.sos, model.eos
     device = encoder_outs.device
@@ -854,7 +854,7 @@ def nar_ar_rescore(
                 tc.append(math.exp(s))
             score += decoder_out[i][len(hyp) + (prefix_len - 1)][eos]
             confidences.append(math.exp(score / (len(hyp) + 1)))
-            # add ctc score
+            # add ar_ctc score
             score += ctc_scores[i] * ctc_weight
             if score > best_score:
                 best_score = score

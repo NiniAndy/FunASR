@@ -2,12 +2,12 @@ import logging
 
 import torch
 
-from funasr.models.accent_recognition.transformer_model import TransformerAr
+from funasr.models.accent_recognition.transformer_anchor_contrast_model import TransformerAnchorContrastAr
 from funasr.register import tables
 
 
-@tables.register("model_classes", "ConformerAr")
-class ConformerAr(TransformerAr):
+@tables.register("model_classes", "ConformerAnchorContrastAr")
+class ConformerAnchorContrastAr(TransformerAnchorContrastAr):
     """CTC-attention hybrid Encoder-Decoder model"""
 
     def __init__(

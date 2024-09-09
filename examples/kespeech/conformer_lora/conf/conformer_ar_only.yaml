@@ -6,7 +6,7 @@
 # tables.print()
 
 # network architecture
-model: Conformer
+model: ConformerOnlyAr
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1     # label smoothing option
@@ -30,17 +30,9 @@ encoder_conf:
     macaron_style: true
     use_cnn_module: true
     cnn_module_kernel: 15
+    interctc_layer_idx: [6, 9, 12]
 
-# decoder
-decoder: TransformerDecoder
-decoder_conf:
-    attention_heads: 4
-    linear_units: 2048
-    num_blocks: 6
-    dropout_rate: 0.1
-    positional_dropout_rate: 0.1
-    self_attention_dropout_rate: 0.0
-    src_attention_dropout_rate: 0.0
+
 
 
 # frontend related

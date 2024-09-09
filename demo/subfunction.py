@@ -8,9 +8,9 @@ from pytorch_lightning.callbacks import ModelCheckpoint, TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from yacs.config import CfgNode as CN
 
-from data.dataloader import MyDataModule
 from lit_model import LitModel
-from utils.functions import calculate_config, init_vocab
+from dataloader import MyDataModule
+
 
 
 class CustomProgressBar(TQDMProgressBar):
@@ -69,17 +69,17 @@ def resume_train(args, check_point, config_file):
         print("Resume training from {}".format(config_file))
         print("Resume training from {}".format(check_point))
     with open(config_file, 'r') as fin:
-        configs = yaml.load(fin, Loader=yaml.FullLoader)
+        kwargs = yaml.load(fin, Loader=yaml.FullLoader)
     args.merge_from_file("args.yml")
 
-    args.symbol_table = configs["symbol_table"]
-    args.pny_table = configs["pny_table"]
-    args.acc_table = configs["acc_table"]
+    args.symbol_table = kwargs["symbol_table"]
+    args.pny_table = kwargs["pny_table"]
+    args.acc_table = kwargs["acc_table"]
 
-    model = LitModel(args, configs)
-    data_module = MyDataModule(args, configs)
+    model = LitModel(args, kwargs)
+    data_module = MyDataModule(args, kwargs)
     bar = CustomProgressBar()
-    checkpoint_callback = ModelCheckpoint(filename='{epoch}-{val_loss:.4f}-{val_cer:.4f}',
+    checkpoint_callback = ModelCheckpoint(filename='{epoch}-{val_loss:.4f}-{val_asr_acc:.4f}',
                                           monitor='val_loss',
                                           save_top_k=args.SAVE.save_top_k,
                                           mode='min',
@@ -94,24 +94,31 @@ def resume_train(args, check_point, config_file):
     trainer.fit(model, data_module, ckpt_path=check_point)
 
 
-def train(args, configs):
-    configs = calculate_config(args, configs)
-    model = LitModel(args, configs)
-    data_module = MyDataModule(args, configs)
+def train(kwargs):
+    model = LitModel(kwargs)
+    data_module = MyDataModule(kwargs)
 
     bar = CustomProgressBar()
-    checkpoint_callback = ModelCheckpoint(filename='{epoch}-{val_loss:.4f}-{val_cer:.4f}',
+    save_conf = kwargs["save_conf"]
+    solver_conf = kwargs["solver_conf"]
+
+    checkpoint_callback = ModelCheckpoint(filename='{epoch}-{val_loss:.4f}-{val_asr_acc:.4f}',
                                           monitor='val_loss',
-                                          save_top_k=args.SAVE.save_top_k,
+                                          save_top_k=save_conf.get("save_top_k", 10),
                                           mode='min',
-                                          every_n_epochs=args.SAVE.every_n_epochs)
-    trainer = pl.Trainer(devices=args.SOLVER.devices,
-                         accelerator=args.SOLVER.accelerator,
-                         accumulate_grad_batches=args.SOLVER.accumulate_grad_batches,
-                         strategy=args.SOLVER.strategy,
-                         max_epochs=args.SOLVER.max_epochs,
+                                          every_n_epochs=save_conf.get("every_n_epochs", 1)
+                                          )
+
+    trainer = pl.Trainer(devices=solver_conf.get("devices", [0]),
+                         accelerator=solver_conf.get("accelerator", "gpu"),
+                         accumulate_grad_batches=solver_conf.get("accumulate_grad_batches", 1),
+                         strategy=solver_conf.get("strategy", "ddp"),
+                         max_epochs=solver_conf.get("max_epochs", 100),
                          callbacks=[checkpoint_callback, bar],
-                         logger=TensorBoardLogger(args.SAVE.save_dir, name=args.SAVE.name))
+                         logger=TensorBoardLogger(os.path.join("/ssd/zhuang/code/FunASR/demo/", save_conf.get("save_dir", "tb_logs")),
+                                                  name=save_conf.get("name", "default"))
+                         )
+
     trainer.fit(model, data_module)
 
 

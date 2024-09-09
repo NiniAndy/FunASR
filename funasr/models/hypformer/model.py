@@ -824,13 +824,13 @@ class Hypformer(torch.nn.Module):
         reverse_weight: float = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """ Export interface for c++ call, forward decoder with multiple
-            hypothesis from ctc prefix beam search and one encoder output
+            hypothesis from ar_ctc prefix beam search and one encoder output
         Args:
-            hyps (torch.Tensor): hyps from ctc prefix beam search, already
+            hyps (torch.Tensor): hyps from ar_ctc prefix beam search, already
                 pad sos at the begining
             hyps_lens (torch.Tensor): length of each hyp in hyps
             encoder_out (torch.Tensor): corresponding encoder output
-            r_hyps (torch.Tensor): hyps from ctc prefix beam search, already
+            r_hyps (torch.Tensor): hyps from ar_ctc prefix beam search, already
                 pad eos at the begining which is used fo right to left decoder
             reverse_weight: used for verfing whether used right to left decoder,
             > 0 will use.

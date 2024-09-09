@@ -183,15 +183,15 @@ def main(**kwargs):
         encoder_params = []
         base_params = []
         for name, param in model.named_parameters():
-            if 'encoder' in name:
+            if 'ar_encoder' in name:
                 encoder_params.append(param)
             else:
                 base_params.append(param)
 
         assert encoder_params, "Encoder parameters are empty!"
         optim_groups = [
-        {'params': encoder_params, 'lr': 1e-5},
-        {'params': base_params, 'lr': kwargs.get("optim_conf", {}).get("lr", 1e-3)}
+        {'params': encoder_params, 'lr': 1e-6},
+        {'params': base_params, 'lr': kwargs.get("optim_conf", {}).get("lr", 0.0005)}
         ]
         
     else:

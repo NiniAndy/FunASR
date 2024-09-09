@@ -663,6 +663,14 @@ class MultiChannelAttention(nn.Module):
 
         return q, k, v
 
+    def att_loss(self, features):
+        # 计算特征的方差
+        var = torch.var(features, dim=0)
+        # 取方差的平均值
+        mean_variance = torch.mean(var)
+        # 使用方差的倒数作为损失
+        loss = 1 / (mean_variance + 1e-9)  # 添加小常数防止除以零
+        return loss
 
 
     def forward(self, query, key, value, mask):
@@ -685,6 +693,13 @@ class MultiChannelAttention(nn.Module):
         scores = scores.view(bsz, n_head, self.n_ch, -1, 1)
         self.attn  = torch.softmax(scores, dim=2)
         p_attn = self.dropout(self.attn)
+        # att_socre = p_attn.sum(dim=1).reshape(-1, self.n_ch)[-1]
+        # att_socre = torch.softmax(att_socre, dim=0)
+        # att_socre_loss  = self.att_loss(att_socre)
+        # save = "/ssd/zhuang/code/FunASR/examples/kespeech/conformer/exp/conformer_multi_embed_decoder_asrNar_exp7/inference/ES/Zhongyuan/test/att_score.txt"
+        # with open(save, "a") as f:
+        #     f.write(str(att_socre.cpu().detach().numpy())+"\n")
+        #     f.write
         v = v.view(bsz, n_head, self.n_ch, -1, self.d_k)
         x = (v*p_attn).sum(dim=2)
         x = (x.transpose(1, 2).contiguous().view(bsz, -1, self.h * self.d_k) )  # (batch, time1, d_model)

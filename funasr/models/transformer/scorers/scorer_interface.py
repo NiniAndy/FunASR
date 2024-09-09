@@ -135,7 +135,7 @@ class PartialScorerInterface(ScorerInterface):
 
     Examples:
          * Prefix search for connectionist-temporal-classification models
-             * :class:`espnet.nets.scorers.ctc.CTCPrefixScorer`
+             * :class:`espnet.nets.scorers.ar_ctc.CTCPrefixScorer`
 
     """
 

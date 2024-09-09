@@ -226,6 +226,7 @@ class AutoModel:
                 frontend.output_size() if hasattr(frontend, "output_size") else None
             )
         kwargs["frontend"] = frontend
+
         # build model
         model_class = tables.model_classes.get(kwargs["model"])
         assert model_class is not None, f'{kwargs["model"]} is not registered'

@@ -1,29 +1,18 @@
 {
     "lora_layers":{
-        "encoder": {
+        "asr_encoder": {
             "self_attn": [
                 "linear_q",
                 "linear_k",
                 "linear_v",
                 "linear_out"]
         },
-        "decoder": {
-            "embed": [
-                "0"
-            ],
+        "ar_encoder": {
             "self_attn": [
                 "linear_q",
                 "linear_k",
                 "linear_v",
-                "linear_out"
-            ],
-            "src_attn": [
-                "linear_q",
-                "linear_k",
-                "linear_v",
-                "linear_out"
-            ],
-            "output_layer": null
+                "linear_out"]
         }
     },
     "lora_info":{
@@ -31,5 +20,5 @@
         "lora_alpha": 64,
         "lora_dropout": 0.0
     },
-    "lora_exception": ["decoder"]
+    "lora_exception": ["ar_encoder.embed", "asr_encoder.embed","ar_decoder", "ar_ctc.ctc_lo", "decoder", "criterion_att", "asr_ctc"]
 }

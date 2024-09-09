@@ -16,7 +16,7 @@ class CTCPrefixScorer(BatchPartialScorerInterface):
 
         Args:
             ctc (torch.nn.Module): The CTC implementation.
-                For example, :class:`espnet.nets.pytorch_backend.ctc.CTC`
+                For example, :class:`espnet.nets.pytorch_backend.ar_ctc.CTC`
             eos (int): The end-of-sequence id.
 
         """

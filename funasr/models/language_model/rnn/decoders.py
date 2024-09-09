@@ -310,7 +310,7 @@ class Decoder(torch.nn.Module, ScorerInterface):
         :param torch.Tensor h: encoder hidden state (T, eprojs)
                                 [in multi-encoder case, list of torch.Tensor,
                                 [(T1, eprojs), (T2, eprojs), ...] ]
-        :param torch.Tensor lpz: ctc log softmax output (T, odim)
+        :param torch.Tensor lpz: ar_ctc log softmax output (T, odim)
                                 [in multi-encoder case, list of torch.Tensor,
                                 [(T1, odim), (T2, odim), ...] ]
         :param Namespace recog_args: argument Namespace containing options
@@ -358,12 +358,12 @@ class Decoder(torch.nn.Module, ScorerInterface):
         ctc_weight = getattr(recog_args, "ctc_weight", False)  # for NMT
 
         if lpz[0] is not None and self.num_encs > 1:
-            # weights-ctc,
+            # weights-ar_ctc,
             # e.g. ctc_loss = w_1*ctc_1_loss + w_2 * ctc_2_loss + w_N * ctc_N_loss
             weights_ctc_dec = recog_args.weights_ctc_dec / np.sum(
                 recog_args.weights_ctc_dec
             )  # normalize
-            logging.info("ctc weights (decoding): " + " ".join([str(x) for x in weights_ctc_dec]))
+            logging.info("ar_ctc weights (decoding): " + " ".join([str(x) for x in weights_ctc_dec]))
         else:
             weights_ctc_dec = [1.0]
 
@@ -634,13 +634,13 @@ class Decoder(torch.nn.Module, ScorerInterface):
         ctc_margin = getattr(
             recog_args, "ctc_window_margin", 0
         )  # use getattr to keep compatibility
-        # weights-ctc,
+        # weights-ar_ctc,
         # e.g. ctc_loss = w_1*ctc_1_loss + w_2 * ctc_2_loss + w_N * ctc_N_loss
         if lpz[0] is not None and self.num_encs > 1:
             weights_ctc_dec = recog_args.weights_ctc_dec / np.sum(
                 recog_args.weights_ctc_dec
             )  # normalize
-            logging.info("ctc weights (decoding): " + " ".join([str(x) for x in weights_ctc_dec]))
+            logging.info("ar_ctc weights (decoding): " + " ".join([str(x) for x in weights_ctc_dec]))
         else:
             weights_ctc_dec = [1.0]
 
@@ -762,7 +762,7 @@ class Decoder(torch.nn.Module, ScorerInterface):
                 rnnlm_state, local_lm_scores = rnnlm.buff_predict(rnnlm_state, vy, n_bb)
                 local_scores = local_scores + recog_args.lm_weight * local_lm_scores
 
-            # ctc
+            # ar_ctc
             if ctc_scorer[0]:
                 local_scores[:, 0] = self.logzero  # avoid choosing blank
                 part_ids = (
