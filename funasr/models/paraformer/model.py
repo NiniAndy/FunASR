@@ -9,6 +9,7 @@ import torch
 import logging
 from torch.cuda.amp import autocast
 from typing import Union, Dict, List, Tuple, Optional
+import numpy as np
 
 from funasr.register import tables
 from funasr.models.ctc.ctc import CTC
@@ -26,7 +27,13 @@ from funasr.utils.timestamp_tools import ts_prediction_lfr6_standard
 from funasr.utils.load_utils import load_audio_text_image_video, extract_fbank
 
 
+from funasr.models.hypformer.search import paraformer_greedy_search, paraformer_beam_search
+from funasr.models.hypformer.search import attention_beam_search, ctc_greedy_search, ctc_prefix_beam_search, attention_rescoring, hyp_beam_search, nar_ar_rescore
+
+
+
 @tables.register("model_classes", "Paraformer")
+@tables.register("model_classes", "paraformer")
 class Paraformer(torch.nn.Module):
     """
     Author: Speech Lab of DAMO Academy, Alibaba Group
@@ -106,6 +113,23 @@ class Paraformer(torch.nn.Module):
         self.blank_id = blank_id
         self.sos = sos if sos is not None else vocab_size - 1
         self.eos = eos if eos is not None else vocab_size - 1
+
+        tokenizer = kwargs.get("tokenizer", None)
+        if tokenizer is not None:
+            self.token2id = tokenizer.token2id
+            self.blank_id = self.token2id.get("<blank>", blank_id)
+            self.sos = self.token2id.get("<s>", self.sos)
+            self.eos = self.token2id.get("</s>", self.eos)
+
+            if hasattr(tokenizer, 'add_special_token_list'):
+                add_special_token_list = tokenizer.add_special_token_list
+            else:
+                add_special_token_list = False
+            if add_special_token_list:
+                self.start_id_of_special_tokens = len(self.token2id) - len(add_special_token_list)
+        else:
+            self.token2id = None
+
         self.vocab_size = vocab_size
         self.ignore_id = ignore_id
         self.ctc_weight = ctc_weight
@@ -164,6 +188,8 @@ class Paraformer(torch.nn.Module):
         self.length_normalized_loss = length_normalized_loss
         self.beam_search = None
         self.error_calculator = None
+
+        self.total_token_num, self.error_num = 1, 0
 
     def forward(
         self,
@@ -440,20 +466,190 @@ class Paraformer(torch.nn.Module):
         #         scorer.to(device=kwargs.get("device", "cpu"), dtype=getattr(torch, kwargs.get("dtype", "float32"))).eval()
         self.beam_search = beam_search
 
+    # def inference(
+    #     self,
+    #     data_in,
+    #     data_lengths=None,
+    #     key: list = None,
+    #     tokenizer=None,
+    #     frontend=None,
+    #     **kwargs,
+    # ):
+    #     # init beamsearch
+    #     is_use_ctc = kwargs.get("decoding_ctc_weight", 0.0) > 0.00001 and self.ctc != None
+    #     is_use_lm = (
+    #         kwargs.get("lm_weight", 0.0) > 0.00001 and kwargs.get("lm_file", None) is not None
+    #     )
+    #     pred_timestamp = kwargs.get("pred_timestamp", False)
+    #     if self.beam_search is None and (is_use_lm or is_use_ctc):
+    #         logging.info("enable beam_search")
+    #         self.init_beam_search(**kwargs)
+    #         self.nbest = kwargs.get("nbest", 1)
+    #
+    #     meta_data = {}
+    #     if (
+    #         isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
+    #     ):  # fbank
+    #         speech, speech_lengths = data_in, data_lengths
+    #         if len(speech.shape) < 3:
+    #             speech = speech[None, :, :]
+    #         if speech_lengths is not None:
+    #             speech_lengths = speech_lengths.squeeze(-1)
+    #         else:
+    #             speech_lengths = speech.shape[1]
+    #     else:
+    #         # extract fbank feats
+    #         time1 = time.perf_counter()
+    #         audio_sample_list = load_audio_text_image_video(
+    #             data_in,
+    #             fs=frontend.fs,
+    #             audio_fs=kwargs.get("fs", 16000),
+    #             data_type=kwargs.get("data_type", "sound"),
+    #             tokenizer=tokenizer,
+    #         )
+    #         time2 = time.perf_counter()
+    #         meta_data["load_data"] = f"{time2 - time1:0.3f}"
+    #         speech, speech_lengths = extract_fbank(
+    #             audio_sample_list, data_type=kwargs.get("data_type", "sound"), frontend=frontend
+    #         )
+    #         time3 = time.perf_counter()
+    #         meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
+    #         meta_data["batch_data_time"] = (
+    #             speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
+    #         )
+    #
+    #     speech = speech.to(device=kwargs["device"])
+    #     speech_lengths = speech_lengths.to(device=kwargs["device"])
+    #     # Encoder
+    #     if kwargs.get("fp16", False):
+    #         speech = speech.half()
+    #     encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
+    #     if isinstance(encoder_out, tuple):
+    #         encoder_out = encoder_out[0]
+    #
+    #     # predictor
+    #     predictor_outs = self.calc_predictor(encoder_out, encoder_out_lens)
+    #     pre_acoustic_embeds, pre_token_length, alphas, pre_peak_index = (
+    #         predictor_outs[0],
+    #         predictor_outs[1],
+    #         predictor_outs[2],
+    #         predictor_outs[3],
+    #     )
+    #
+    #     pre_token_length = pre_token_length.round().long()
+    #     if torch.max(pre_token_length) < 1:
+    #         return []
+    #     decoder_outs = self.cal_decoder_with_predictor(
+    #         encoder_out, encoder_out_lens, pre_acoustic_embeds, pre_token_length
+    #     )
+    #     decoder_out, ys_pad_lens = decoder_outs[0], decoder_outs[1]
+    #
+    #     results = []
+    #     b, n, d = decoder_out.size()
+    #     if isinstance(key[0], (list, tuple)):
+    #         key = key[0]
+    #     if len(key) < b:
+    #         key = key * b
+    #     for i in range(b):
+    #         x = encoder_out[i, : encoder_out_lens[i], :]
+    #         am_scores = decoder_out[i, : pre_token_length[i], :]
+    #         if self.beam_search is not None:
+    #             nbest_hyps = self.beam_search(
+    #                 x=x,
+    #                 am_scores=am_scores,
+    #                 maxlenratio=kwargs.get("maxlenratio", 0.0),
+    #                 minlenratio=kwargs.get("minlenratio", 0.0),
+    #             )
+    #
+    #             nbest_hyps = nbest_hyps[: self.nbest]
+    #         else:
+    #
+    #             yseq = am_scores.argmax(dim=-1)
+    #             score = am_scores.max(dim=-1)[0]
+    #             score = torch.sum(score, dim=-1)
+    #             # pad with mask tokens to ensure compatibility with sos/eos tokens
+    #             yseq = torch.tensor([self.sos] + yseq.tolist() + [self.eos], device=yseq.device)
+    #             nbest_hyps = [Hypothesis(yseq=yseq, score=score)]
+    #         for nbest_idx, hyp in enumerate(nbest_hyps):
+    #             ibest_writer = None
+    #             if kwargs.get("output_dir") is not None:
+    #                 if not hasattr(self, "writer"):
+    #                     self.writer = DatadirWriter(kwargs.get("output_dir"))
+    #                 ibest_writer = self.writer[f"{nbest_idx+1}best_recog"]
+    #             # remove sos/eos and get results
+    #             last_pos = -1
+    #             if isinstance(hyp.yseq, list):
+    #                 token_int = hyp.yseq[1:last_pos]
+    #             else:
+    #                 token_int = hyp.yseq[1:last_pos].tolist()
+    #
+    #             # remove blank symbol id, which is assumed to be 0
+    #             token_int = list(
+    #                 filter(
+    #                     lambda x: x != self.eos and x != self.sos and x != self.blank_id, token_int
+    #                 )
+    #             )
+    #
+    #             if tokenizer is not None:
+    #                 # Change integer-ids to tokens
+    #                 token = tokenizer.ids2tokens(token_int)
+    #                 text_postprocessed = tokenizer.tokens2text(token)
+    #
+    #                 if pred_timestamp:
+    #                     timestamp_str, timestamp = ts_prediction_lfr6_standard(
+    #                         pre_peak_index[i],
+    #                         alphas[i],
+    #                         copy.copy(token),
+    #                         vad_offset=kwargs.get("begin_time", 0),
+    #                         upsample_rate=1,
+    #                     )
+    #                     if not hasattr(tokenizer, "bpemodel"):
+    #                         text_postprocessed, time_stamp_postprocessed, _ = postprocess_utils.sentence_postprocess(token, timestamp)
+    #                     result_i = {"key": key[i], "text": text_postprocessed, "timestamp": time_stamp_postprocessed,}
+    #                 else:
+    #                     if not hasattr(tokenizer, "bpemodel"):
+    #                         text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
+    #                     result_i = {"key": key[i], "text": text_postprocessed}
+    #
+    #                 if ibest_writer is not None:
+    #                     ibest_writer["token"][key[i]] = " ".join(token)
+    #                     # ibest_writer["text"][key[i]] = text
+    #                     ibest_writer["text"][key[i]] = text_postprocessed
+    #             else:
+    #                 result_i = {"key": key[i], "token_int": token_int}
+    #             results.append(result_i)
+    #
+    #     return results, meta_data
+
+    def export(self, **kwargs):
+        from .export_meta import export_rebuild_model
+
+        if "max_seq_len" not in kwargs:
+            kwargs["max_seq_len"] = 512
+        models = export_rebuild_model(model=self, **kwargs)
+        return models
+
+    # wenet inference
     def inference(
-        self,
-        data_in,
-        data_lengths=None,
-        key: list = None,
-        tokenizer=None,
-        frontend=None,
-        **kwargs,
+            self,
+            data_in,
+            data_lengths=None,
+            key: list = None,
+            tokenizer=None,
+            frontend=None,
+            **kwargs,
     ):
+
+        if self.token2id is not None:
+            label = kwargs.get("target", None)
+            label_id = []
+            for l in label[0]:
+                if l != " ":
+                    label_id.append(self.token2id.get(l, "<unk>"))
+
         # init beamsearch
         is_use_ctc = kwargs.get("decoding_ctc_weight", 0.0) > 0.00001 and self.ctc != None
-        is_use_lm = (
-            kwargs.get("lm_weight", 0.0) > 0.00001 and kwargs.get("lm_file", None) is not None
-        )
+        is_use_lm = (kwargs.get("lm_weight", 0.0) > 0.00001 and kwargs.get("lm_file", None) is not None)
         pred_timestamp = kwargs.get("pred_timestamp", False)
         if self.beam_search is None and (is_use_lm or is_use_ctc):
             logging.info("enable beam_search")
@@ -461,9 +657,7 @@ class Paraformer(torch.nn.Module):
             self.nbest = kwargs.get("nbest", 1)
 
         meta_data = {}
-        if (
-            isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
-        ):  # fbank
+        if (isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"):  # fbank
             speech, speech_lengths = data_in, data_lengths
             if len(speech.shape) < 3:
                 speech = speech[None, :, :]
@@ -488,9 +682,7 @@ class Paraformer(torch.nn.Module):
             )
             time3 = time.perf_counter()
             meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
-            meta_data["batch_data_time"] = (
-                speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
-            )
+            meta_data["batch_data_time"] = (speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000)
 
         speech = speech.to(device=kwargs["device"])
         speech_lengths = speech_lengths.to(device=kwargs["device"])
@@ -509,7 +701,7 @@ class Paraformer(torch.nn.Module):
             predictor_outs[2],
             predictor_outs[3],
         )
-        
+
         pre_token_length = pre_token_length.round().long()
         if torch.max(pre_token_length) < 1:
             return []
@@ -525,80 +717,58 @@ class Paraformer(torch.nn.Module):
         if len(key) < b:
             key = key * b
         for i in range(b):
-            x = encoder_out[i, : encoder_out_lens[i], :]
-            am_scores = decoder_out[i, : pre_token_length[i], :]
-            if self.beam_search is not None:
-                nbest_hyps = self.beam_search(
-                    x=x,
-                    am_scores=am_scores,
-                    maxlenratio=kwargs.get("maxlenratio", 0.0),
-                    minlenratio=kwargs.get("minlenratio", 0.0),
-                )
+            nbest_idx = 0
+            ibest_writer = None
+            if kwargs.get("output_dir") is not None:
+                if not hasattr(self, "writer"):
+                    self.writer = DatadirWriter(kwargs.get("output_dir"))
+                ibest_writer = self.writer[f"{nbest_idx + 1}best_recog"]
 
-                nbest_hyps = nbest_hyps[: self.nbest]
+            # beam_size = kwargs.get("beam_size", 4)
+            beam_size = 10
+            paraformer_beam_result = paraformer_beam_search(decoder_out, ys_pad_lens, beam_size=beam_size, eos=self.eos)
+            topk_result = paraformer_beam_result[0].nbest
+            if len(topk_result[0]) == len(label_id):
+                error_num = self.cal_topk_error_rate(topk_result, label_id)
+                token_num = len(label_id)
+                self.total_token_num += token_num
+                self.error_num += error_num
+
+            print ("topk_cer: ", self.error_num / self.total_token_num)
+
+            paraformer_beam_result_token_int = paraformer_beam_result[0].tokens
+            # remove blank symbol id, which is assumed to be 0
+            paraformer_beam_result_token_int = list(
+                filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, paraformer_beam_result_token_int))
+
+            token_int = paraformer_beam_result_token_int
+
+            if tokenizer is not None:
+                # Change integer-ids to tokens
+                token = tokenizer.ids2tokens(token_int)
+                text_postprocessed = tokenizer.tokens2text(token)
+                if not hasattr(tokenizer, "bpemodel"):
+                    text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
+
+                result_i = {"key": key[i], "text": text_postprocessed}
+
+                if ibest_writer is not None:
+                    ibest_writer["token"][key[i]] = " ".join(token)
+                    # ibest_writer["text"][key[i]] = text
+                    ibest_writer["text"][key[i]] = text_postprocessed
             else:
-
-                yseq = am_scores.argmax(dim=-1)
-                score = am_scores.max(dim=-1)[0]
-                score = torch.sum(score, dim=-1)
-                # pad with mask tokens to ensure compatibility with sos/eos tokens
-                yseq = torch.tensor([self.sos] + yseq.tolist() + [self.eos], device=yseq.device)
-                nbest_hyps = [Hypothesis(yseq=yseq, score=score)]
-            for nbest_idx, hyp in enumerate(nbest_hyps):
-                ibest_writer = None
-                if kwargs.get("output_dir") is not None:
-                    if not hasattr(self, "writer"):
-                        self.writer = DatadirWriter(kwargs.get("output_dir"))
-                    ibest_writer = self.writer[f"{nbest_idx+1}best_recog"]
-                # remove sos/eos and get results
-                last_pos = -1
-                if isinstance(hyp.yseq, list):
-                    token_int = hyp.yseq[1:last_pos]
-                else:
-                    token_int = hyp.yseq[1:last_pos].tolist()
-
-                # remove blank symbol id, which is assumed to be 0
-                token_int = list(
-                    filter(
-                        lambda x: x != self.eos and x != self.sos and x != self.blank_id, token_int
-                    )
-                )
-
-                if tokenizer is not None:
-                    # Change integer-ids to tokens
-                    token = tokenizer.ids2tokens(token_int)
-                    text_postprocessed = tokenizer.tokens2text(token)
-                    
-                    if pred_timestamp:
-                        timestamp_str, timestamp = ts_prediction_lfr6_standard(
-                            pre_peak_index[i],
-                            alphas[i],
-                            copy.copy(token),
-                            vad_offset=kwargs.get("begin_time", 0),
-                            upsample_rate=1,
-                        )
-                        if not hasattr(tokenizer, "bpemodel"):
-                            text_postprocessed, time_stamp_postprocessed, _ = postprocess_utils.sentence_postprocess(token, timestamp)
-                        result_i = {"key": key[i], "text": text_postprocessed, "timestamp": time_stamp_postprocessed,}
-                    else:
-                        if not hasattr(tokenizer, "bpemodel"):
-                            text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
-                        result_i = {"key": key[i], "text": text_postprocessed}
-
-                    if ibest_writer is not None:
-                        ibest_writer["token"][key[i]] = " ".join(token)
-                        # ibest_writer["text"][key[i]] = text
-                        ibest_writer["text"][key[i]] = text_postprocessed
-                else:
-                    result_i = {"key": key[i], "token_int": token_int}
-                results.append(result_i)
+                result_i = {"key": key[i], "token_int": token_int}
+            results.append(result_i)
 
         return results, meta_data
 
-    def export(self, **kwargs):
-        from .export_meta import export_rebuild_model
 
-        if "max_seq_len" not in kwargs:
-            kwargs["max_seq_len"] = 512
-        models = export_rebuild_model(model=self, **kwargs)
-        return models
+    def cal_topk_error_rate(self, label, top):
+        label_array = np.array(label)
+        top_array = np.array(top)
+        # 计算每个位置上，是否有至少一个匹配的预测值
+        correct_at_least_one = np.any(top_array == label_array, axis=0)
+        # 计算每个位置是否错误（没有任何预测值匹配标签）
+        error_positions = ~correct_at_least_one
+        return np.sum(error_positions)
+

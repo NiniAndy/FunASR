@@ -16,6 +16,7 @@ nj=32
 
 inference_device="cuda" #"cpu"
 inference_checkpoint="model.pt.avg10"
+#inference_checkpoint="model.pt.best"
 inference_scp="wav.scp"
 inference_batch_size=1
 
@@ -25,7 +26,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="exp1"
+tag="exp3-p20"
 workspace=`pwd`
 
 master_port=12345
@@ -41,7 +42,8 @@ set -o pipefail
 train_set=train
 valid_set=dev
 # test_sets="dev test"
-test_sets="test"
+#test_sets="test"
+test_sets="dev"
 
 config=hypformer_conformer_12e_6d_2048_256.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
@@ -126,6 +128,22 @@ if [ ${stage} -le 4 ] && [ ${stop_stage} -ge 4 ]; then
   ++tokenizer_conf.token_list="${token_list}" \
   ++frontend_conf.cmvn_file="${feats_dir}/data/${train_set}/am.mvn" \
   ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
+
+#  export CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES
+#  gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
+#  torchrun \
+#  --nnodes 1 \
+#  --nproc_per_node ${gpu_num} \
+#  --master_port ${master_port} \
+#  ../../../funasr/bin/train.py \
+#  --config-path "${workspace}/conf" \
+#  --config-name "${config}" \
+#  ++train_data_set_list="${feats_dir}/data/${train_set}/audio_datasets.jsonl" \
+#  ++valid_data_set_list="${feats_dir}/data/${valid_set}/audio_datasets.jsonl" \
+#  ++init_param=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/model.pb \
+#  ++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt \
+#  ++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn \
+#  ++output_dir="${exp_dir}/exp/${model_dir}" &> ${log_file}
 fi
 
 # ++init_param="/ssd/zhuang/code/FunASR2024/examples/aishell/paraformer/exp/baseline_speech_paraformer_asr_nat-aishell1-pytorch_config_zh_char_exp1/orresponding_model_saved_from_git.pb" \
@@ -147,7 +165,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_nar_ar_rescore"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_nar-err-ar-decoding"
+#    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_nar2-attention-rescoring"
+#    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_paraformer-greedy-search"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 
@@ -182,8 +202,29 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           ++disable_log=true \
           ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt
         }&
-
     done
+
+#    for JOB in $(seq ${nj}); do
+#        {
+#          id=$((JOB-1))
+#          gpuid=${gpuid_list_array[$id]}
+#
+#          export CUDA_VISIBLE_DEVICES=${gpuid}
+#          python ../../../funasr/bin/inference.py \
+#          --config-path="${exp_dir}/exp/${model_dir}" \
+#          --config-name="config.yaml" \
+#          ++init_param="${exp_dir}/exp/${model_dir}/${inference_checkpoint}" \
+#          ++tokenizer_conf.token_list=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/tokens.txt \
+#          ++frontend_conf.cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_paraformer_asr_nat-aishell1-pytorch/am.mvn \
+#          ++input="${_logdir}/keys.${JOB}.scp" \
+#          ++output_dir="${inference_dir}/${JOB}" \
+#          ++device="${inference_device}" \
+#          ++decoding_ctc_weight=0.5 \
+#          ++ncpu=1 \
+#          ++disable_log=true \
+#          ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt
+#        }&
+#    done
     wait
 
     mkdir -p ${inference_dir}/1best_recog

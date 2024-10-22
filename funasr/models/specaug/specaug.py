@@ -16,6 +16,7 @@ import ast
 
 
 @tables.register("specaug_classes", "SpecAug")
+@tables.register("specaug_classes", "specaug")
 class SpecAug(nn.Module):
     """Implementation of SpecAug.
 

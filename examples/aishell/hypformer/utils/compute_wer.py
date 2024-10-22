@@ -49,7 +49,11 @@ def compute_wer(ref_file,
            cer_detail_writer.write("hyp:" + '\t' + " ".join(list(map(lambda x: x.lower(), hyp_dict[hyp_key]))) + '\n')
 
     if rst['Wrd'] > 0:
+        import numpy as np
+        rst['wrong_words'] = np.float64(rst['wrong_words'])
+        rst['Wrd'] = np.float64(rst['Wrd'])
         rst['Err'] = round(rst['wrong_words'] * 100 / rst['Wrd'], 2)
+        # rst['Err'] = round(rst['wrong_words'] * 100 / rst['Wrd'], 2)
     if rst['Snt'] > 0:
         rst['S.Err'] = round(rst['wrong_sentences'] * 100 / rst['Snt'], 2)
 

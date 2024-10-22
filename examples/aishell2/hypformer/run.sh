@@ -25,7 +25,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell2/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="IOS"
+tag="exp3"
 workspace=`pwd`
 
 master_port=12345
@@ -40,9 +40,10 @@ set -o pipefail
 
 train_set=train
 valid_set=dev/IOS
-test_sets="dev/IOS test/IOS dev/Android test/Android dev/MIC test/MIC"
+#test_sets="dev/IOS test/IOS dev/Android test/Android dev/MIC test/MIC"
+test_sets="dev/IOS test/IOS"
 
-config=hypformer_conformer_12e_6d_2048_256.yaml
+config=hypformer.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
 token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
 
@@ -91,7 +92,7 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_attn_rescoring"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_nar2-attention-rescoring"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 

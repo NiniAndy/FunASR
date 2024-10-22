@@ -22,13 +22,13 @@ from funasr.models.transformer.utils.add_sos_eos import add_sos_eos, rep_eos
 from funasr.models.transformer.utils.nets_utils import make_pad_mask, pad_list
 from funasr.utils.load_utils import load_audio_text_image_video, extract_fbank
 
-from funasr.models.hypformer.search import paraformer_greedy_search, paraformer_beam_search
-from funasr.models.hypformer.search import (attention_beam_search, ctc_greedy_search, ctc_prefix_beam_search, attention_rescoring, hyp_beam_search,
-                                            nar_ar_rescore, nar2_rescore, nar2_decoding, nar_ar_decoding, nar_err_ar_decoding)
+from funasr.models.hypformer_2.search import paraformer_greedy_search, paraformer_beam_search
+from funasr.models.hypformer_2.search import (attention_beam_search, ctc_greedy_search, ctc_prefix_beam_search, attention_rescoring, hyp_beam_search,
+                                            nar_ar_rescore, nar2_rescore, nar2_decoding, nar_ar_decoding)
 
 
-@tables.register("model_classes", "Hypformer")
-class Hypformer(torch.nn.Module):
+@tables.register("model_classes", "Hypformer2")
+class Hypformer2(torch.nn.Module):
     """
     Author: Speech Lab of DAMO Academy, Alibaba Group
     Paraformer: Fast and Accurate Parallel Transformer for Non-autoregressive End-to-End Speech Recognition
@@ -88,13 +88,20 @@ class Hypformer(torch.nn.Module):
         encoder = encoder_class(input_size=input_size, **encoder_conf)
         encoder_output_size = encoder.output_size()
 
+        dataset_conf = kwargs["dataset_conf"]
+        max_token_length = dataset_conf.get("max_token_length", 1024)
+        self.max_token_length = max_token_length
+
         if decoder is not None:
             decoder_class = tables.decoder_classes.get(decoder)
             decoder = decoder_class(vocab_size=vocab_size, encoder_output_size=encoder_output_size, **decoder_conf,)
 
         if hyp_decoder is not None:
             hyp_decoder_class = tables.decoder_classes.get(hyp_decoder)
-            hyp_decoder = hyp_decoder_class(vocab_size=vocab_size, encoder_output_size=encoder_output_size, **hyp_decoder_conf,)
+            hyp_decoder = hyp_decoder_class(vocab_size=vocab_size,
+                                            encoder_output_size=encoder_output_size,
+                                            max_token_length=max_token_length,
+                                            **hyp_decoder_conf)
 
         if ctc_weight > 0.0:
     
@@ -120,6 +127,7 @@ class Hypformer(torch.nn.Module):
         self.normalize = normalize
         self.encoder = encoder
         self.decoder = decoder
+
         self.hyp_decoder = hyp_decoder
 
         self.criterion_att = LabelSmoothingLoss(
@@ -150,6 +158,15 @@ class Hypformer(torch.nn.Module):
         self.length_normalized_loss = length_normalized_loss
         self.beam_search = None
         self.error_calculator = None
+
+        for param in self.encoder.parameters():
+            param.requires_grad = False
+        for param in self.decoder.parameters():
+            param.requires_grad = False
+        for param in self.predictor.parameters():
+            param.requires_grad = False
+        for param in self.ctc.parameters():
+            param.requires_grad = False
     
     def forward(
         self,
@@ -174,7 +191,6 @@ class Hypformer(torch.nn.Module):
             speech_lengths = speech_lengths[:, 0]
         
         batch_size = speech.shape[0]
-        stage = kwargs["stage"]
 
         # Encoder
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
@@ -193,7 +209,7 @@ class Hypformer(torch.nn.Module):
         
 
         # decoder: Attention decoder branch
-        loss_att, acc_att, cer_att, wer_att, loss_pre, pre_loss_att = self._calc_att_loss(encoder_out, encoder_out_lens, text, text_lengths, stage)
+        loss_att, acc_att, cer_att, wer_att, loss_pre, pre_loss_att = self._calc_att_loss(encoder_out, encoder_out_lens, text, text_lengths)
         
         loss_att1 = loss_att["loss_att1"]
         loss_att2 = loss_att["loss_att2"]
@@ -255,7 +271,7 @@ class Hypformer(torch.nn.Module):
             # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
             if self.normalize is not None:
                 speech, speech_lengths = self.normalize(speech, speech_lengths)
-        
+
 
         # Forward encoder
         encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
@@ -287,7 +303,6 @@ class Hypformer(torch.nn.Module):
         encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
-        stage: str,
     ):
         encoder_out_mask = (~make_pad_mask(encoder_out_lens, maxlen=encoder_out.size(1))[:, None, :]).to(encoder_out.device)
         if self.predictor_bias == 1:
@@ -311,8 +326,7 @@ class Hypformer(torch.nn.Module):
         hpy_token = hpy_pro.argmax(-1)
 
         # 1.1.2 error sampler
-        if stage == "train":
-            hpy_token = self.error_sampler(hpy_token, hpy_pro, hpy_mask, ys_pad)
+        # hpy_token = self.error_sampler(hpy_token, hpy_pro, hpy_mask, ys_pad)
 
         hpy_token_pad = hpy_token * hpy_mask + ys_pad * (~hpy_mask)
         hpy_token_pad = rep_eos(hpy_token_pad, self.eos, self.ignore_id)
@@ -351,7 +365,9 @@ class Hypformer(torch.nn.Module):
             wer_att = {"wer_att1": wer_att1, "wer_att2": wer_att2}
         
         return loss_att, acc_att, cer_att, wer_att, loss_pre, pre_loss_att
-    
+
+
+
     def sampler(self, encoder_out, encoder_out_lens, ys_pad, ys_pad_lens, pre_acoustic_embeds):
         
         tgt_mask = (~make_pad_mask(ys_pad_lens, maxlen=ys_pad_lens.max())[:, :, None]).to(ys_pad.device)
@@ -383,6 +399,8 @@ class Hypformer(torch.nn.Module):
             input_mask_expand_dim, 0)
         return sematic_embeds * tgt_mask, decoder_out * tgt_mask
 
+    # 固定产生错误
+    '''
     def error_sampler(self, hpy_token, hpy_pro, hpy_mask, ys_pad, max_err_p=0.2):
         B, L = hpy_mask.size()
         device = hpy_mask.device
@@ -407,52 +425,51 @@ class Hypformer(torch.nn.Module):
         # 替换被选择的位置的 token
         hpy_token = hpy_token.masked_scatter(replace_mask, selected_tokens[replace_mask])
         return hpy_token
+    '''
 
+    # 动态随机产生错误
+    '''
+    def error_sampler(self, hpy_token, hpy_pro, hpy_mask, ys_pad, max_err_p=0.2):
+        B, L = hpy_mask.size()
+        device = hpy_mask.device
 
-    # def error_sampler(self, hpy_token, hpy_pro, hpy_mask, ys_pad, max_err_p=0.2):
-    #     """
-    #     随机变化err
-    #     """
-    #     B, L = hpy_mask.size()
-    #     device = hpy_mask.device
-    #
-    #     # 计算每个样本的准确率
-    #     total_positions = hpy_mask.sum(dim=1)  # 每个样本中需要考虑的位置数量
-    #     correct_positions = ((hpy_token == ys_pad) & hpy_mask).sum(dim=1)
-    #     # 避免除以 0
-    #     accuracy = torch.where(
-    #         total_positions > 0,
-    #         correct_positions.float() / total_positions.float(),
-    #         torch.zeros_like(total_positions, dtype=torch.float)
-    #     )
-    #
-    #     # 根据准确率调整 err_p
-    #     err_p = max_err_p * accuracy  # err_p 的范围是 [0, 0.2]
-    #
-    #     # 确定每个样本需要替换的 token 数量
-    #     hpy_len = hpy_mask.sum(dim=-1)
-    #     num_to_replace = (err_p * hpy_len).int()
-    #
-    #     # 选择要替换的位置
-    #     replace_mask = torch.zeros_like(hpy_mask, dtype=torch.bool)
-    #     for i in range(B):
-    #         replace_indices = torch.where(hpy_mask[i])[0]
-    #         if len(replace_indices) > 0 and num_to_replace[i] > 0:
-    #             perm = torch.randperm(len(replace_indices), device=device)
-    #             selected_indices = replace_indices[perm[:num_to_replace[i]]]
-    #             replace_mask[i, selected_indices] = True
-    #
-    #     # 获取 hpy_pro 中每个位置按概率排序的 token 索引
-    #     sorted_indices = hpy_pro.argsort(dim=-1, descending=True)
-    #     # 取第2至第5高的 token 索引
-    #     candidates_indices = sorted_indices[:, :, 1:5]
-    #     # 从第2至第5高的 token 中随机选择一个
-    #     random_choice_indices = torch.randint(0, 4, (B, L), device=device)
-    #     selected_tokens = torch.gather(candidates_indices, 2, random_choice_indices.unsqueeze(-1)).squeeze(-1)
-    #     # 替换被选择的位置的 token
-    #     hpy_token = hpy_token.masked_scatter(replace_mask, selected_tokens[replace_mask])
-    #     return hpy_token
+        # 计算每个样本的准确率
+        total_positions = hpy_mask.sum(dim=1)  # 每个样本中需要考虑的位置数量
+        correct_positions = ((hpy_token == ys_pad) & hpy_mask).sum(dim=1)
+        # 避免除以 0
+        accuracy = torch.where(
+            total_positions > 0,
+            correct_positions.float() / total_positions.float(),
+            torch.zeros_like(total_positions, dtype=torch.float)
+        )
 
+        # 根据准确率调整 err_p
+        err_p = max_err_p * accuracy  # err_p 的范围是 [0, 0.2]
+
+        # 确定每个样本需要替换的 token 数量
+        hpy_len = hpy_mask.sum(dim=-1)
+        num_to_replace = (err_p * hpy_len).int()
+
+        # 选择要替换的位置
+        replace_mask = torch.zeros_like(hpy_mask, dtype=torch.bool)
+        for i in range(B):
+            replace_indices = torch.where(hpy_mask[i])[0]
+            if len(replace_indices) > 0 and num_to_replace[i] > 0:
+                perm = torch.randperm(len(replace_indices), device=device)
+                selected_indices = replace_indices[perm[:num_to_replace[i]]]
+                replace_mask[i, selected_indices] = True
+
+        # 获取 hpy_pro 中每个位置按概率排序的 token 索引
+        sorted_indices = hpy_pro.argsort(dim=-1, descending=True)
+        # 取第2至第5高的 token 索引
+        candidates_indices = sorted_indices[:, :, 1:5]
+        # 从第2至第5高的 token 中随机选择一个
+        random_choice_indices = torch.randint(0, 4, (B, L), device=device)
+        selected_tokens = torch.gather(candidates_indices, 2, random_choice_indices.unsqueeze(-1)).squeeze(-1)
+        # 替换被选择的位置的 token
+        hpy_token = hpy_token.masked_scatter(replace_mask, selected_tokens[replace_mask])
+        return hpy_token
+        '''
 
 
     def _calc_ctc_loss(
@@ -565,7 +582,7 @@ class Hypformer(torch.nn.Module):
         self.hyp_beam_search = beam_search
         
 
-    ''' paraformer inference'''
+    # paraformer inference
     '''
     def inference(
         self,
@@ -705,7 +722,7 @@ class Hypformer(torch.nn.Module):
         return results, meta_data
     '''
     
-    '''wenet inference'''
+    # wenet inference
     def inference(
         self,
         data_in,
@@ -791,13 +808,13 @@ class Hypformer(torch.nn.Module):
             # attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, paraformer_beam_result_token_int))
 
             '''nar2 attention_rescoring'''
-            attnre_weight = kwargs.get("decoding_attnre_weight", 0.5)
-            beam_size = kwargs.get("beam_size", 10)
-            paraformer_beam_result = paraformer_beam_search(decoder_out, ys_pad_lens, beam_size=beam_size, eos=self.eos)
-            attn_res_result = attention_rescoring(self, prefix_results=paraformer_beam_result, encoder_outs=encoder_out,
-                                                  encoder_lens=torch.tensor([encoder_out.size(1)]), prefix_weight=attnre_weight, reverse_weight=0.0)
-            attn_res_token_int = attn_res_result[0].tokens
-            attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
+            # attnre_weight = kwargs.get("decoding_attnre_weight", 0.5)
+            # beam_size = kwargs.get("beam_size", 10)
+            # paraformer_beam_result = paraformer_beam_search(decoder_out, ys_pad_lens, beam_size=beam_size, eos=self.eos)
+            # attn_res_result = attention_rescoring(self, prefix_results=paraformer_beam_result, encoder_outs=encoder_out,
+            #                                       encoder_lens=torch.tensor([encoder_out.size(1)]), prefix_weight=attnre_weight, reverse_weight=0.0)
+            # attn_res_token_int = attn_res_result[0].tokens
+            # attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
 
             '''nar2 rescoring'''
             # attnre_weight=kwargs.get("decoding_attnre_weight", 0.5)
@@ -817,21 +834,12 @@ class Hypformer(torch.nn.Module):
             # attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
 
             '''nar-ar decoding'''
-            # attnre_weight=kwargs.get("decoding_attnre_weight", 0.5)
-            # paraformer_greedy_result = paraformer_greedy_search(decoder_out, ys_pad_lens, peaks)
-            # attn_res_result = nar_ar_decoding(self, prefix_results=paraformer_greedy_result, encoder_outs=encoder_out,
-            #                                       encoder_lens=torch.tensor([encoder_out.size(1)]), prefix_weight=attnre_weight, reverse_weight=0.0)
-            # attn_res_token_int = attn_res_result[0].tokens
-            # attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
-
-            '''nar_err_ar_decoding'''
-            # attnre_weight=kwargs.get("decoding_attnre_weight", 0.5)
-            # beam_size = kwargs.get("beam_size", 10)
-            # paraformer_beam_result = paraformer_beam_search(decoder_out, ys_pad_lens, beam_size=beam_size, eos=self.eos)
-            # attn_res_result = nar_err_ar_decoding(self, prefix_results=paraformer_beam_result, encoder_outs=encoder_out,
-            #                                       encoder_lens=torch.tensor([encoder_out.size(1)]), prefix_weight=attnre_weight, reverse_weight=0.0)
-            # attn_res_token_int = attn_res_result[0].tokens
-            # attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
+            attnre_weight=kwargs.get("decoding_attnre_weight", 0.5)
+            paraformer_greedy_result = paraformer_greedy_search(decoder_out, ys_pad_lens, peaks)
+            attn_res_result = nar_ar_decoding(self, prefix_results=paraformer_greedy_result, encoder_outs=encoder_out,
+                                                  encoder_lens=torch.tensor([encoder_out.size(1)]), prefix_weight=attnre_weight, reverse_weight=0.0)
+            attn_res_token_int = attn_res_result[0].tokens
+            attn_res_token_int = list(filter(lambda x: x != self.eos and x != self.sos and x != self.blank_id, attn_res_token_int))
 
             '''nar-ar rescoring'''
             # attnre_weight=kwargs.get("decoding_attnre_weight", 0.5)
@@ -948,8 +956,8 @@ class Hypformer(torch.nn.Module):
         encoder_out_lens = torch.tensor([encoder_out.size(1)]).repeat(encoder_out.size(0)).to(encoder_out.device)
         decoder_out, _ = self.hyp_decoder.forward_nar2(encoder_out, encoder_out_lens, hyps, hyps_lens)
         r_decoder_out = torch.zeros_like(decoder_out)
-
         decoder_out = torch.nn.functional.log_softmax(decoder_out, dim=-1)
+
         return decoder_out, r_decoder_out
 
     def forward_nar_ar_decoding(

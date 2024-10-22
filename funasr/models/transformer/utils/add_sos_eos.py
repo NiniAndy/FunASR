@@ -29,3 +29,17 @@ def add_sos_eos(ys_pad, sos, eos, ignore_id):
     ys_in = [torch.cat([_sos, y], dim=0) for y in ys]
     ys_out = [torch.cat([y, _eos], dim=0) for y in ys]
     return pad_list(ys_in, eos), pad_list(ys_out, ignore_id)
+
+
+def rep_eos(ys_pad, eos, ignore_id):
+    """Replace all ignore ids with eos
+
+    :param torch.Tensor ys_pad: batch of padded target sequences (B, Lmax)
+    :param int eos: index of <eos>
+    :param int ignore_id: index of padding
+    :return: padded tensor (B, Lmax)
+    :rtype: torch.Tensor
+    """
+    _eos = ys_pad.new([eos])
+    ys = [y[y != ignore_id] for y in ys_pad]  # parse padded ys
+    return pad_list(ys, eos)

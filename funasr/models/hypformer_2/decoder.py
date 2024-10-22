@@ -157,12 +157,13 @@ class DecoderLayer(nn.Module):
 
         return x, tgt_mask, memory, memory_mask
 
-@tables.register("decoder_classes", "HypformerDecoder")
-class HypformerDecoder(nn.Module, BatchScorerInterface):
+@tables.register("decoder_classes", "HypformerDecoder2")
+class HypformerDecoder2(nn.Module, BatchScorerInterface):
     def __init__(
             self,
             vocab_size: int,
             encoder_output_size: int,
+            max_token_length: int = 2048,
             attention_heads: int = 4,
             linear_units: int = 2048,
             num_blocks: int = 6,
@@ -194,6 +195,8 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
             )
         else:
             raise ValueError(f"only 'embed' or 'linear' is supported: {input_layer}")
+
+        self.position_emb = nn.Embedding(max_token_length, attention_dim)
 
         attention_dim = encoder_output_size
         self.decoders = repeat(num_blocks,
@@ -228,33 +231,35 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
         '''
         教师强制解码
         '''
-
         B, T = hyp_in_pad.size()
         device = hyp_in_pad.device
 
+        idx = torch.arange(T, device=device)   # [0, 1, 2, 3, 4 ,..., T-1]
+
         ys_in_pad_matrix = ys_in_pad.unsqueeze(1).expand(-1, T, -1)
-        hpy_mask = torch.tril(torch.ones(T, T), diagonal=0).to(device)
-        hpy_mask = hpy_mask.unsqueeze(0).expand(B, -1, -1).bool()
-        ys_in_pad_matrix = ys_in_pad_matrix * hpy_mask
+        ys_mask = torch.tril(torch.ones(T, T), diagonal=0).to(device)
+        ys_mask = ys_mask.unsqueeze(0).expand(B, -1, -1).bool()
         '''
-        hpy_mask
-        [   [1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0],
-            [1, 1, 1, 0, 0],
-            [1, 1, 1, 1, 0],
-            [1, 1, 1, 1, 1] ]
+        ys_mask
+        [[1, 0, 0, 0, 0],
+         [1, 1, 0, 0, 0],
+         [1, 1, 1, 0, 0],
+         [1, 1, 1, 1, 0],
+         [1, 1, 1, 1, 1]]
         '''
+        ys_in_pad_matrix = ys_in_pad_matrix * ys_mask
 
         hyp_in_pad_matrix = hyp_in_pad.unsqueeze(1).expand(-1, T, -1)
-        hyp_in_pad_matrix = hyp_in_pad_matrix * ~hpy_mask
+        hpy_mask = ~ys_mask
         '''
-        ~hpy_mask
-        [   [0, 0, 0, 0, 0],
-            [1, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0],
-            [1, 1, 1, 0, 0],
-            [1, 1, 1, 1, 0] ]
+        hpy_mask
+        [[0, 1, 1, 1, 1],
+         [0, 0, 1, 1, 1],
+         [0, 0, 0, 1, 1],
+         [0, 0, 0, 0, 1],
+         [0, 0, 0, 0, 0]]
         '''
+        hyp_in_pad_matrix = hyp_in_pad_matrix * hpy_mask
 
         teach_force = ys_in_pad_matrix + hyp_in_pad_matrix
         teach_force = teach_force.reshape(-1, T)
@@ -265,7 +270,9 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
         memory_mask = (~make_pad_mask(hlens, maxlen=memory.size(1)))[:, None, :].to(memory.device)
         memory_mask = memory_mask.unsqueeze(1).expand(-1, T, -1, -1).reshape(-1, memory_mask.size(-2), memory_mask.size(-1))
 
-        pickup_mask = torch.eye(T, dtype=torch.bool, device=device).unsqueeze(0).expand(B, -1, -1).unsqueeze(-1)
+        pickup_mask = torch.zeros(T, T).to(device)
+        pickup_mask[:, 0] = 1
+        pickup_mask = pickup_mask.bool()
 
         tgt = teach_force
         # tgt_mask: (B, 1, L)
@@ -280,7 +287,11 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
             padlen = memory.shape[1] - memory_mask.shape[-1]
             memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
 
-        x = self.embed(tgt)
+        x = self.embed(tgt)[:, 1:, :]
+        idx = idx.unsqueeze(0).expand(B, -1)
+        idx  = idx.reshape(-1, 1)
+        idx_emb = self.position_emb(idx)
+        x = torch.cat([idx_emb, x], dim=1)
         x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
         if self.normalize_before:
             x = self.after_norm(x)
@@ -290,156 +301,10 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
         tgt_mask  = tgt_mask[0::T, :, :]
         olens = tgt_mask.sum(1)
 
-        x = x.reshape(B, T, x.size(-2), x.size(-1))
-        x = x * pickup_mask
-        x = x.sum(dim=2)
+        x = x[:, 0, :]
+        x = x.reshape(B, T, x.size(-1))
 
         return x, olens
-
-
-    # def forward(
-    #         self,
-    #         hs_pad: torch.Tensor,
-    #         hlens: torch.Tensor,
-    #         ys_in_pad: torch.Tensor,
-    #         ys_in_lens: torch.Tensor,
-    #         hyp_in_pad: torch.Tensor,
-    # ) -> Tuple[torch.Tensor, torch.Tensor]:
-    #     '''
-    #     教师强制解码 预测位置替换成<blank>
-    #     '''
-    #     device = hyp_in_pad.device
-    #     hyp_in_pad = hyp_in_pad[:,1:]
-    #     ys_in_pad = ys_in_pad[:,1:]
-    #
-    #     eos = torch.empty_like(hyp_in_pad[:,0]).fill_(2).to(device)
-    #     hyp_in_pad = torch.cat([hyp_in_pad, eos.unsqueeze(1)], dim=1)
-    #     ys_in_pad = torch.cat([ys_in_pad, eos.unsqueeze(1)], dim=1)
-    #
-    #     B, T = hyp_in_pad.size()
-    #
-    #
-    #     ys_in_pad_matrix = ys_in_pad.unsqueeze(1).expand(-1, T, -1)
-    #     ori_mask = torch.tril(torch.ones(T, T), diagonal=0).int().to(device)
-    #     '''
-    #     ori_mask
-    #     [   [1, 0, 0, 0, 0],
-    #         [1, 1, 0, 0, 0],
-    #         [1, 1, 1, 0, 0],
-    #         [1, 1, 1, 1, 0],
-    #         [1, 1, 1, 1, 1] ]
-    #     '''
-    #     blank_mask = torch.eye(T, dtype=torch.int).to(device)
-    #     ys_mask = ori_mask - blank_mask
-    #     ys_mask = ys_mask.bool()
-    #     '''
-    #     ys_mask
-    #     [   [0, 0, 0, 0, 0],
-    #         [1, 0, 0, 0, 0],
-    #         [1, 1, 0, 0, 0],
-    #         [1, 1, 1, 0, 0],
-    #         [1, 1, 1, 1, 0] ]
-    #     '''
-    #     ys_mask = ys_mask.unsqueeze(0).expand(B, -1, -1).bool()
-    #     ys_in_pad_matrix = ys_in_pad_matrix * ys_mask
-    #
-    #     hpy_mask = ori_mask.bool()
-    #     hpy_mask = ~hpy_mask
-    #     '''
-    #     hpy_mask
-    #     [   [0, 1, 1, 1, 1],
-    #         [0, 0, 1, 1, 1],
-    #         [0, 0, 0, 1, 1],
-    #         [0, 0, 0, 0, 1],
-    #         [0, 0, 0, 0, 0] ]
-    #     '''
-    #     hyp_in_pad_matrix = hyp_in_pad.unsqueeze(1).expand(-1, T, -1)
-    #     hyp_in_pad_matrix = hyp_in_pad_matrix * hpy_mask
-    #
-    #     teach_force = ys_in_pad_matrix + hyp_in_pad_matrix
-    #     teach_force = teach_force.reshape(-1, T)
-    #     teach_force_lens = ys_in_lens.reshape(-1, 1).repeat(1, T).reshape(-1)
-    #
-    #     memory = hs_pad
-    #     memory = memory.unsqueeze(1).expand(-1, T, -1, -1).reshape(-1, memory.size(-2), memory.size(-1))
-    #     memory_mask = (~make_pad_mask(hlens, maxlen=memory.size(1)))[:, None, :].to(memory.device)
-    #     memory_mask = memory_mask.unsqueeze(1).expand(-1, T, -1, -1).reshape(-1, memory_mask.size(-2), memory_mask.size(-1))
-    #
-    #     pickup_mask = torch.eye(T, dtype=torch.bool, device=device).unsqueeze(0).expand(B, -1, -1).unsqueeze(-1)
-    #
-    #     tgt = teach_force
-    #     # tgt_mask: (B, 1, L)
-    #     tgt_mask = (~make_pad_mask(teach_force_lens)[:, None, :]).to(tgt.device)
-    #     # m: (1, L, L)
-    #     m = torch.ones(1,  tgt_mask.size(-1), tgt_mask.size(-1), device=tgt_mask.device).bool()
-    #     # tgt_mask: (B, L, L)
-    #     tgt_mask = tgt_mask & m
-    #
-    #     # Padding for Longformer
-    #     if memory_mask.shape[-1] != memory.shape[1]:
-    #         padlen = memory.shape[1] - memory_mask.shape[-1]
-    #         memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
-    #
-    #     x = self.embed(tgt)
-    #     x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
-    #     if self.normalize_before:
-    #         x = self.after_norm(x)
-    #     if self.output_layer is not None:
-    #         x = self.output_layer(x)
-    #
-    #     tgt_mask  = tgt_mask[0::T, :, :]
-    #     olens = tgt_mask.sum(1)
-    #
-    #     x = x.reshape(B, T, x.size(-2), x.size(-1))
-    #     x = x * pickup_mask
-    #     x = x.sum(dim=2)
-    #
-    #     return x, olens
-
-
-    # def forward(
-    #         self,
-    #         hs_pad: torch.Tensor,
-    #         hlens: torch.Tensor,
-    #         ys_in_pad: torch.Tensor,
-    #         ys_in_lens: torch.Tensor,
-    #         hyp_in_pad: torch.Tensor,
-    # ) -> Tuple[torch.Tensor, torch.Tensor]:
-    #     '''
-    #     一次性二次解码
-    #     '''
-    #
-    #     B, T = hyp_in_pad.size()
-    #     device = hyp_in_pad.device
-    #
-    #     memory = hs_pad
-    #     memory_mask = (~make_pad_mask(hlens, maxlen=memory.size(1)))[:, None, :].to(memory.device)
-    #
-    #     tgt = hyp_in_pad
-    #     # tgt_mask: (B, 1, L)
-    #     tgt_mask = (~make_pad_mask(ys_in_lens)[:, None, :]).to(tgt.device)
-    #     # m: (1, L, L)
-    #     m = torch.ones(1,  tgt_mask.size(-1), tgt_mask.size(-1), device=tgt_mask.device).bool()
-    #     # tgt_mask: (B, L, L)
-    #     tgt_mask = tgt_mask & m
-    #
-    #     # Padding for Longformer
-    #     if memory_mask.shape[-1] != memory.shape[1]:
-    #         padlen = memory.shape[1] - memory_mask.shape[-1]
-    #         memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
-    #
-    #     x = self.embed(tgt)
-    #     x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
-    #     if self.normalize_before:
-    #         x = self.after_norm(x)
-    #     if self.output_layer is not None:
-    #         x = self.output_layer(x)
-    #
-    #     tgt_mask  = tgt_mask[0::T, :, :]
-    #     olens = tgt_mask.sum(1)
-    #
-    #     return x, olens
-
 
 
     def forward_nar2(
@@ -481,7 +346,11 @@ class HypformerDecoder(nn.Module, BatchScorerInterface):
             padlen = memory.shape[1] - memory_mask.shape[-1]
             memory_mask = torch.nn.functional.pad(memory_mask, (0, padlen), "constant", False)
 
-        x = self.embed(tgt)
+        idx = tgt[:, 0].unsqueeze(1)
+        idx_emb = self.position_emb(idx)
+
+        x = self.embed(tgt[:, 1:])
+        x = torch.cat([idx_emb, x], dim=1)
 
         x, tgt_mask, memory, memory_mask = self.decoders(x, tgt_mask, memory, memory_mask)
         if self.normalize_before:

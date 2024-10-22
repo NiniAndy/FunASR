@@ -14,6 +14,9 @@ sudo apt-get install sox
 pip install sox   
 pip install tensorboardX   
 pip install -U transformers  
+pip install lightning
+pip install PyYAML
+pip install yacs
 
 # Install SOX  
 cd /usr/lib/x86_64-linux-gnu/   

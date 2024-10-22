@@ -23,7 +23,8 @@ def _get_checkpoint_paths(output_dir: str, last_n: int = 5, use_deepspeed=False,
     """
     try:
         if not use_deepspeed:
-            checkpoint = torch.load(os.path.join(output_dir, "model.pt"), map_location="cpu")
+            # checkpoint = torch.load(os.path.join(output_dir, "model.pt"), map_location="cpu")
+            checkpoint = torch.load(os.path.join(output_dir, "model.pt"), map_location="cpu", weights_only=True)
         else:
             checkpoint = torch.load(
                 os.path.join(output_dir, "model.pt", "mp_rank_00_model_states.pt"),
@@ -69,7 +70,9 @@ def average_checkpoints(output_dir: str, last_n: int = 5, **kwargs):
     # Load state_dicts from checkpoints
     for path in checkpoint_paths:
         if os.path.isfile(path):
-            state_dicts.append(torch.load(path, map_location="cpu")["state_dict"])
+            # state_dicts.append(torch.load(path, map_location="cpu")["state_dict"])
+            state_dicts.append(torch.load(path, map_location="cpu", weights_only=True)["state_dict"])
+
         else:
             print(f"Checkpoint file {path} not found.")
 

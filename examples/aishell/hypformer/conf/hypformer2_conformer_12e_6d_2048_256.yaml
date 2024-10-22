@@ -1,6 +1,6 @@
 
 # network architecture
-model: Hypformer
+model: Hypformer2
 model_conf:
     ctc_weight: 0.3
     lsm_weight: 0.1
@@ -49,7 +49,7 @@ predictor_conf:
     tail_threshold: 0.45
 
 # hyp_decoder
-hyp_decoder: HypformerDecoder
+hyp_decoder: HypformerDecoder2
 hyp_decoder_conf:
     attention_heads: 4
     linear_units: 2048
@@ -105,10 +105,8 @@ dataset: AudioDataset
 dataset_conf:
     index_ds: IndexDSJsonl
     batch_sampler: EspnetStyleBatchSampler
-#    batch_type: example # example or length
-#    batch_size: 32 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     batch_type: length # example or length
-    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    batch_size: 35000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
     max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
     buffer_size: 1024
     shuffle: True

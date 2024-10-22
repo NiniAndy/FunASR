@@ -24,7 +24,7 @@ raw_data=/ssd/zhuang/dataset/data_KeSpeech/KeSpeech
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="Ji-Lu"
+tag="Lan-Yin"
 workspace=`pwd`
 
 master_port=12345
@@ -37,12 +37,16 @@ set -e
 set -u
 set -o pipefail
 
-train_set=ES/Ji-Lu/train
-valid_set=ES/Ji-Lu/dev
-# test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
-test_sets=ES/Ji-Lu/test
+#train_set=MD/train
+#valid_set=MD/dev
+#test_sets="ES/Beijing/test ES/Ji-Lu/test ES/Jiang-Huai/test ES/Jiao-Liao/test ES/Lan-Yin/test ES/Northeastern/test ES/Southwestern/test ES/Zhongyuan/test MD/test WD/test"
+#test_sets=WD/test
 
-config=hypformer_conformer_12e_6d_2048_256.yaml
+train_set=ES/Lan-Yin/train
+valid_set=ES/Lan-Yin/dev
+test_sets=ES/Lan-Yin/test
+
+config=hypformer.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
 token_list=${feats_dir}/data/${lang}_token_list/$token_type/tokens.txt
 
@@ -91,7 +95,7 @@ if [ ${stage} -le 2 ] && [ ${stop_stage} -ge 2 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_attn_rescoring"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_nar-err-ar-decoding"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 

@@ -389,6 +389,7 @@ class Trainer:
             with my_context():
                 time2 = time.perf_counter()
                 with maybe_autocast(self.use_fp16):
+                    batch.update({"stage": "train"})
                     retval = model(**batch)
 
                     # if (
@@ -570,6 +571,7 @@ class Trainer:
                 speed_stats["data_load"] = f"{time1 - time5:0.3f}"
                 batch = to_device(batch, self.device)
                 time2 = time.perf_counter()
+                batch.update({"stage": "val"})
                 retval = model(**batch)
                 time3 = time.perf_counter()
                 speed_stats["forward_time"] = f"{time3 - time2:0.3f}"
