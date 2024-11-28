@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 
 
-CUDA_VISIBLE_DEVICES="0,1,2,3"
+CUDA_VISIBLE_DEVICES="2,3"
 
 # general configuration
 feats_dir="../DATA" #feature output dictionary
+#feats_dir="/ssd/zhuang/code/FunASR/examples/aishell2/DATA"
+#feats_dir="/ssd/zhuang/code/FunASR/examples/kespeech/DATA"
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
+stage=4
 stop_stage=5
 
 # feature configuration
@@ -25,7 +27,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 #data_url=www.openslr.org/resources/33
 
 # exp tag
-tag="wenetctc_version"
+tag="exp1"
 workspace=`pwd`
 
 master_port=12345
@@ -146,7 +148,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_ctc_greedy_searh"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_ctc-rescroinng"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 
@@ -177,9 +179,11 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \
           ++ncpu=1 \
+          ++decoding_ctc_weight=0.5 \
           ++disable_log=true \
           ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt
         }&
+
 
     done
     wait

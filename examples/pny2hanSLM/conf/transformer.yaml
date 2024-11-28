@@ -1,0 +1,59 @@
+# network architecture
+model: SLM
+model_conf:
+    lsm_weight: 0.1     # label smoothing option
+    length_normalized_loss: false
+
+# decoder
+decoder: SLMDecoder
+decoder_conf:
+    encoder_output_size: 256
+    attention_heads: 4
+    linear_units: 2048
+    num_blocks: 12
+    dropout_rate: 0.1
+    positional_dropout_rate: 0.1
+    self_attention_dropout_rate: 0.0
+    src_attention_dropout_rate: 0.0
+
+
+train_conf:
+  accum_grad: 1
+  grad_clip: 5
+  max_epoch: 150
+  keep_nbest_models: 10
+  log_interval: 50
+
+optim: adam
+optim_conf:
+   lr: 0.0005
+scheduler: warmuplr
+scheduler_conf:
+   warmup_steps: 30000
+
+
+tokenizer: CharTokenizer
+tokenizer_conf:
+  unk_symbol: <unk>
+  token_list: "/ssd/zhuang/code/FunASR/examples/pny2hanSLM/data/tokens.txt"
+
+confusion: True
+confusion_conf:
+  max_mask_prob: 0.3
+  mask_lv1_prob: 0.1
+  mask_lv2_prob: 0.1
+  mask_lv3_prob: 0.2
+  mask_lv4_prob: 0.3
+  mask_lv5_prob: 0.3
+  pinyin_set_path: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/pinyin/pinyin_set.json"
+  initials_distence_path: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/pinyin/initials_distance.json"
+  vowel_distence_path: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/pinyin/vowel_distance.json"
+  threshold: 0.5
+
+
+ctc_conf:
+    dropout_rate: 0.0
+    ctc_type: builtin
+    reduce: true
+    ignore_nan_grad: true
+normalize: null

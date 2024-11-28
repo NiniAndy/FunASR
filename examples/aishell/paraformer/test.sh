@@ -37,8 +37,6 @@ cmvn_file=/ssd/zhuang/code/FunASR/examples/aishell/paraformer/exp/speech_parafor
 
 
 
-
-
 # Testing Stage
 echo "Inference"
 if [ ${inference_device} == "cuda" ]; then

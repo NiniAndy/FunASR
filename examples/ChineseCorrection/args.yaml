@@ -1,0 +1,37 @@
+# lightning 框架的配置文件
+solver_conf:
+    devices: [0,1,2,3]
+    max_epochs: 200
+    precision: "medium"
+    strategy: 'ddp'  # dp
+    accelerator: "gpu"
+    accumulate_grad_batches: 4
+    gradient_clip: 1
+    train_batch_size: 768
+    valid_batch_size: 768
+    test_batch_size: 1
+    num_workers: 1
+
+save_conf:
+    name: "stage_1.1"
+    save_top_k: 10
+    every_n_epochs: 1
+    save_dir: "save"
+
+inference_conf:
+    use_cuda: true
+    inference_type: 'greedy_search'# 'greedy_search' 'beam_search' 对inference起作用, 目前beam search非并行，test会很慢
+    beam_width: 3  # beam search 搜索宽度
+    beam_nbest: 3  # beam search 保留结果，test阶段强制为1
+    c_weight: 1  # 长度惩罚系数
+    view_nbest: False  # inference 阶段展示nbest个结果
+
+
+config:  "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/conf/transformer.yaml"
+train_data_set_list: "/ssd/zhuang/dataset/News2016/train.txt"
+valid_data_set_list: "/ssd/zhuang/dataset/News2016/valid.txt"
+test_data_set_list: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/mingle_text/train_rec.txt"
+output_dir: /ssd/zhuang/code/FunASR/examples/ChineseCorrection/
+init_param: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/save/stage_1/version_0/checkpoints/model.pt.avg10"
+
+

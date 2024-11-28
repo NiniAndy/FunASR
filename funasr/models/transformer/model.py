@@ -18,6 +18,9 @@ from funasr.utils import postprocess_utils
 from funasr.utils.datadir_writer import DatadirWriter
 from funasr.register import tables
 
+from funasr.models.transformer.search_method import attention_beam_search
+from funasr.models.transformer.utils.nets_utils import make_pad_mask
+
 
 @tables.register("model_classes", "Transformer")
 class Transformer(nn.Module):
@@ -354,14 +357,113 @@ class Transformer(nn.Module):
 
         self.beam_search = beam_search
 
+    '''wenet style inference'''
+    # def inference(
+    #     self,
+    #     data_in,
+    #     data_lengths=None,
+    #     key: list = None,
+    #     tokenizer=None,
+    #     frontend=None,
+    #     **kwargs,
+    # ):
+    #
+    #     if kwargs.get("batch_size", 1) > 1:
+    #         raise NotImplementedError("batch decoding is not implemented")
+    #
+    #     # init beamsearch
+    #     if self.beam_search is None:
+    #         logging.info("enable beam_search")
+    #         self.init_beam_search(**kwargs)
+    #         self.nbest = kwargs.get("nbest", 1)
+    #
+    #     meta_data = {}
+    #     if (
+    #         isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
+    #     ):  # fbank
+    #         speech, speech_lengths = data_in, data_lengths
+    #         if len(speech.shape) < 3:
+    #             speech = speech[None, :, :]
+    #         if speech_lengths is None:
+    #             speech_lengths = speech.shape[1]
+    #     else:
+    #         # extract fbank feats
+    #         time1 = time.perf_counter()
+    #         audio_sample_list = load_audio_text_image_video(
+    #             data_in,
+    #             fs=frontend.fs,
+    #             audio_fs=kwargs.get("fs", 16000),
+    #             data_type=kwargs.get("data_type", "sound"),
+    #             tokenizer=tokenizer,
+    #         )
+    #         time2 = time.perf_counter()
+    #         meta_data["load_data"] = f"{time2 - time1:0.3f}"
+    #         speech, speech_lengths = extract_fbank(
+    #             audio_sample_list, data_type=kwargs.get("data_type", "sound"), frontend=frontend
+    #         )
+    #         time3 = time.perf_counter()
+    #         meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
+    #         meta_data["batch_data_time"] = (
+    #             speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
+    #         )
+    #
+    #     speech = speech.to(device=kwargs["device"])
+    #     speech_lengths = speech_lengths.to(device=kwargs["device"])
+    #     # Encoder
+    #     encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
+    #     if isinstance(encoder_out, tuple):
+    #         encoder_out = encoder_out[0]
+    #
+    #
+    #     results = []
+    #     b, _, _ = encoder_out.size()
+    #     if isinstance(key[0], (list, tuple)):
+    #         key = key[0]
+    #     if len(key) < b:
+    #         key = key * b
+    #     for i in range(b):
+    #         nbest_idx = 0
+    #         ibest_writer = None
+    #         if kwargs.get("output_dir") is not None:
+    #             if not hasattr(self, "writer"):
+    #                 self.writer = DatadirWriter(kwargs.get("output_dir"))
+    #             ibest_writer = self.writer[f"{nbest_idx+1}best_recog"]
+    #
+    #         beam_size = 10
+    #         length_penalty = 0.0
+    #         encoder_mask = (~make_pad_mask(encoder_out_lens)[:, None, :]).to(encoder_out.device)
+    #         results = attention_beam_search(self, encoder_out, encoder_mask, beam_size, length_penalty)
+    #         token_int = results[0].tokens
+    #
+    #         if tokenizer is not None:
+    #             # Change integer-ids to tokens
+    #             token = tokenizer.ids2tokens(token_int)
+    #             text_postprocessed = tokenizer.tokens2text(token)
+    #             if not hasattr(tokenizer, "bpemodel"):
+    #                 text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
+    #
+    #             result_i = {"key": key[i], "text": text_postprocessed}
+    #
+    #             if ibest_writer is not None:
+    #                 ibest_writer["token"][key[i]] = " ".join(token)
+    #                 # ibest_writer["text"][key[i]] = text
+    #                 ibest_writer["text"][key[i]] = text_postprocessed
+    #         else:
+    #             result_i = {"key": key[i], "token_int": token_int}
+    #         results.append(result_i)
+    #
+    #     return results, meta_data
+
+
+    '''funasr style inference'''
     def inference(
-        self,
-        data_in,
-        data_lengths=None,
-        key: list = None,
-        tokenizer=None,
-        frontend=None,
-        **kwargs,
+            self,
+            data_in,
+            data_lengths=None,
+            key: list = None,
+            tokenizer=None,
+            frontend=None,
+            **kwargs,
     ):
 
         if kwargs.get("batch_size", 1) > 1:
@@ -375,7 +477,7 @@ class Transformer(nn.Module):
 
         meta_data = {}
         if (
-            isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
+                isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
         ):  # fbank
             speech, speech_lengths = data_in, data_lengths
             if len(speech.shape) < 3:
@@ -400,7 +502,7 @@ class Transformer(nn.Module):
             time3 = time.perf_counter()
             meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
             meta_data["batch_data_time"] = (
-                speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
+                    speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
             )
 
         speech = speech.to(device=kwargs["device"])
@@ -448,6 +550,17 @@ class Transformer(nn.Module):
                 token = tokenizer.ids2tokens(token_int)
                 text = tokenizer.tokens2text(token)
 
+                # 英文处理(去_)
+                # token = text
+                # text_postprocessed = text
+                # result_i = {"key": key[i], "token": token, "text": text_postprocessed}
+                # results.append(result_i)
+                #
+                # if ibest_writer is not None:
+                #     ibest_writer["token"][key[i]] = token
+                #     ibest_writer["text"][key[i]] = text_postprocessed
+
+                # 中文处理(加空格)
                 text_postprocessed, _ = postprocess_utils.sentence_postprocess(token)
                 result_i = {"key": key[i], "token": token, "text": text_postprocessed}
                 results.append(result_i)
@@ -455,5 +568,7 @@ class Transformer(nn.Module):
                 if ibest_writer is not None:
                     ibest_writer["token"][key[i]] = " ".join(token)
                     ibest_writer["text"][key[i]] = text_postprocessed
+
+
 
         return results, meta_data

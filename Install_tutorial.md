@@ -8,7 +8,7 @@ pip3 install -e ./
 pip3 install torch torchvision torchaudio   
 pip install hdbscan   
 pip install -U rotary_embedding_torch   
-pip install ffmpeg-python   
+pip install ffmpeg-python   cd 
 sudo apt-get update   
 sudo apt-get install sox   
 pip install sox   

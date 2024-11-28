@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 
 
-CUDA_VISIBLE_DEVICES="0,1,2,3"
+CUDA_VISIBLE_DEVICES="0,1"
 
 # general configuration
 feats_dir="../DATA" #feature output dictionary
+#feats_dir="/ssd/zhuang/code/FunASR/examples/aishell2/DATA" #feature output dictionary
 exp_dir=`pwd`
 lang=zh
 token_type=char
-stage=5
+stage=4
 stop_stage=5
 
 # feature configuration
@@ -42,6 +43,7 @@ set -o pipefail
 train_set=train
 valid_set=dev
 test_sets="dev test"
+#test_sets=test
 
 config=conformer_12e_6d_2048_256.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
@@ -58,14 +60,15 @@ if [ ${stage} -le 0 ] && [ ${stop_stage} -ge 0 ]; then
     echo "stage 0: Data preparation"
     # Data preparation
     local/aishell_data_prep.sh ${raw_data}/data_aishell/wav ${raw_data}/data_aishell/transcript ${feats_dir}
-    for x in train dev test; do
+#    for x in train dev test; do
+    for x in dev test; do
         cp ${feats_dir}/data/${x}/text ${feats_dir}/data/${x}/text.org
         paste -d " " <(cut -f 1 -d" " ${feats_dir}/data/${x}/text.org) <(cut -f 2- -d" " ${feats_dir}/data/${x}/text.org | tr -d " ") \
             > ${feats_dir}/data/${x}/text
         utils/text2token.py -n 1 -s 1 ${feats_dir}/data/${x}/text > ${feats_dir}/data/${x}/text.org
         mv ${feats_dir}/data/${x}/text.org ${feats_dir}/data/${x}/text
 
-        # convert wav.scp text to jsonl
+#        # convert wav.scp text to jsonl
         scp_file_list_arg="++scp_file_list='[\"${feats_dir}/data/${x}/wav.scp\",\"${feats_dir}/data/${x}/text\"]'"
         python ../../../funasr/datasets/audio_datasets/scp2jsonl.py \
         ++data_type_list='["source", "target"]' \
@@ -147,7 +150,7 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
 
   for dset in ${test_sets}; do
 
-    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_wenet_ar_decoder"
+    inference_dir="${exp_dir}/exp/${model_dir}/inference-${inference_checkpoint}/${dset}_attn-decoder"
     _logdir="${inference_dir}/logdir"
     echo "inference_dir: ${inference_dir}"
 
@@ -178,9 +181,9 @@ if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
           ++output_dir="${inference_dir}/${JOB}" \
           ++device="${inference_device}" \
           ++ncpu=1 \
+          ++decoding_ctc_weight=0.0 \
           ++disable_log=true \
           ++batch_size="${inference_batch_size}" &> ${_logdir}/log.${JOB}.txt
-          ++decoding_ctc_weight=1.0
         }&
 
     done

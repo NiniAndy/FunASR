@@ -34,9 +34,7 @@ class AudioDataset(torch.utils.data.Dataset):
             preprocessor_speech = kwargs.get("preprocessor_speech", None)
             if preprocessor_speech:
                 preprocessor_speech_class = tables.preprocessor_classes.get(preprocessor_speech)
-                preprocessor_speech = preprocessor_speech_class(
-                    **kwargs.get("preprocessor_speech_conf")
-                )
+                preprocessor_speech = preprocessor_speech_class(**kwargs.get("preprocessor_speech_conf"))
             self.preprocessor_speech = preprocessor_speech
             preprocessor_text = kwargs.get("preprocessor_text", None)
             if preprocessor_text:
@@ -67,6 +65,7 @@ class AudioDataset(torch.utils.data.Dataset):
         item = self.index_ds[index]
         # import pdb;
         # pdb.set_trace()
+        key = item.get("key", None)
         source = item["source"]
         data_src = load_audio_text_image_video(source, fs=self.fs)
         if self.preprocessor_speech:
@@ -90,6 +89,7 @@ class AudioDataset(torch.utils.data.Dataset):
         text_lengths = torch.tensor([ids_lengths], dtype=torch.int32)
 
         return {
+            "key": key,
             "speech": speech[0, :, :],
             "speech_lengths": speech_lengths,
             "text": text,
@@ -294,9 +294,7 @@ class AudioWithDialectDataset(torch.utils.data.Dataset):
         preprocessor_speech = kwargs.get("preprocessor_speech", None)
         if preprocessor_speech:
             preprocessor_speech_class = tables.preprocessor_classes.get(preprocessor_speech)
-            preprocessor_speech = preprocessor_speech_class(
-                **kwargs.get("preprocessor_speech_conf")
-            )
+            preprocessor_speech = preprocessor_speech_class(**kwargs.get("preprocessor_speech_conf") )
         self.preprocessor_speech = preprocessor_speech
         # 是否使用文本预处理 eg.
         # TextPreprocessRemovePunctuation

@@ -88,7 +88,6 @@ class BaseTokenizer(ABC):
     def encode(self, text, **kwargs):
         tokens = self.text2tokens(text)
         text_ints = self.tokens2ids(tokens)
-
         return text_ints
 
     def decode(self, text_ints):

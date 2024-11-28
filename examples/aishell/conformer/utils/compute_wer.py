@@ -37,7 +37,7 @@ def compute_wer(ref_file,
            out_item = compute_wer_by_line(hyp_dict[hyp_key], ref_dict[hyp_key])
            rst['Wrd'] += out_item['nwords']
            rst['Corr'] += out_item['cor']
-           rst['wrong_words'] += out_item['wrong']
+           rst['wrong_words'] += int(out_item['wrong'])
            rst['Ins'] += out_item['ins']
            rst['Del'] += out_item['del']
            rst['Sub'] += out_item['sub']
@@ -49,7 +49,11 @@ def compute_wer(ref_file,
            cer_detail_writer.write("hyp:" + '\t' + " ".join(list(map(lambda x: x.lower(), hyp_dict[hyp_key]))) + '\n')
 
     if rst['Wrd'] > 0:
+        import numpy as np
+        rst['wrong_words'] = np.float64(rst['wrong_words'])
+        rst['Wrd'] = np.float64(rst['Wrd'])
         rst['Err'] = round(rst['wrong_words'] * 100 / rst['Wrd'], 2)
+        # rst['Err'] = round(rst['wrong_words'] * 100 / rst['Wrd'], 2)
     if rst['Snt'] > 0:
         rst['S.Err'] = round(rst['wrong_sentences'] * 100 / rst['Snt'], 2)
 

@@ -114,5 +114,3 @@ ctc_conf:
     reduce: true
     ignore_nan_grad: true
 normalize: null
-
-

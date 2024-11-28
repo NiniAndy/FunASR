@@ -72,6 +72,9 @@ class Conv2dSubsampling(torch.nn.Module):
             pos_enc if pos_enc is not None else PositionalEncoding(odim, dropout_rate),
         )
 
+        # self.out = torch.nn.Linear(odim * (((idim - 1) // 2 - 1) // 2), odim)
+        # self.pos_enc = pos_enc if pos_enc is not None else PositionalEncoding(odim, dropout_rate)
+
     def forward(self, x, x_mask):
         """Subsample x.
 
@@ -90,6 +93,9 @@ class Conv2dSubsampling(torch.nn.Module):
         x = self.conv(x)
         b, c, t, f = x.size()
         x = x.transpose(1, 2).contiguous().view(b, t, c * f)  # (b, t, n)
+        # x = self.out(x)
+        # if self.pos_enc is not None:
+        #     x = self.pos_enc(x)
         x = self.out(x)
         if x_mask is None:
             return x, None
