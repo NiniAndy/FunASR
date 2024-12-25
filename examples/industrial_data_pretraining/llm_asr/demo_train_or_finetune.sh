@@ -19,7 +19,7 @@ train_data="/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/train_960/aud
 val_data="/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/dev/audio_datasets.jsonl"
 
 # exp output dir
-output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_exp2"
+output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_exp"
 log_file="${output_dir}/log.txt"
 
 workspace=`pwd`

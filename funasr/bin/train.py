@@ -96,12 +96,7 @@ def main(**kwargs):
     model = AutoModel(**kwargs)
 
     # save config.yaml
-    if (
-        (use_ddp or use_fsdp)
-        and dist.get_rank() == 0
-        or not (use_ddp or use_fsdp)
-        and local_rank == 0
-    ):
+    if ((use_ddp or use_fsdp) and dist.get_rank() == 0 or not (use_ddp or use_fsdp) and local_rank == 0 ):
         prepare_model_dir(**kwargs)
 
     # parse kwargs
@@ -138,23 +133,12 @@ def main(**kwargs):
     
     if use_ddp:
         model = model.cuda(local_rank)
-        model = DDP(
-            model,
-            device_ids=[local_rank],
-            find_unused_parameters=kwargs.get("train_conf", {}).get(
-                "find_unused_parameters", False
-            ),
-        )
+        model = DDP(model, device_ids=[local_rank],
+            find_unused_parameters=kwargs.get("train_conf", {}).get("find_unused_parameters", False),)
     elif use_fsdp:
         # model = FSDP(model).cuda(local_rank)
 
-        def custom_auto_wrap_policy(
-            module: nn.Module,
-            recurse: bool,
-            nonwrapped_numel: int,
-            # Additional custom arguments
-            min_num_params: int = int(1e8),
-        ) -> bool:
+        def custom_auto_wrap_policy( module: nn.Module, recurse: bool, nonwrapped_numel: int, min_num_params: int = int(1e8), ) -> bool:
             # 根据自定义逻辑决定是否包装模块
             is_large = unwrapped_params >= min_num_params
             requires_grad_uniform = len({p.requires_grad for p in module.parameters()}) == 1

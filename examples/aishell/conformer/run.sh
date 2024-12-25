@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 
-CUDA_VISIBLE_DEVICES="0,1"
+CUDA_VISIBLE_DEVICES="0,1,2,3"
 
 # general configuration
 feats_dir="../DATA" #feature output dictionary
@@ -45,7 +45,7 @@ valid_set=dev
 test_sets="dev test"
 #test_sets=test
 
-config=conformer_12e_6d_2048_256.yaml
+config=train_conformer.yaml
 model_dir="baseline_$(basename "${config}" .yaml)_${lang}_${token_type}_${tag}"
 
 

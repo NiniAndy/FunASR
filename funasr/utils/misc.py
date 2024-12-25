@@ -1,7 +1,9 @@
 import os
 import io
+import pprint
 import shutil
 import logging
+import pprint
 from collections import OrderedDict
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
@@ -70,16 +72,15 @@ def prepare_model_dir(**kwargs):
 
     yaml_file = os.path.join(kwargs.get("output_dir", "./"), "config.yaml")
     OmegaConf.save(config=kwargs, f=yaml_file)
-    logging.info(f"kwargs: {kwargs}")
+    logging.info("kwargs: \n%s", pprint.pformat(kwargs))
+    # logging.info(f"kwargs: {kwargs}")
     logging.info("config.yaml is saved to: %s", yaml_file)
 
     model_path = kwargs.get("model_path", None)
     if model_path is not None:
         config_json = os.path.join(model_path, "configuration.json")
         if os.path.exists(config_json):
-            shutil.copy(
-                config_json, os.path.join(kwargs.get("output_dir", "./"), "configuration.json")
-            )
+            shutil.copy(config_json, os.path.join(kwargs.get("output_dir", "./"), "configuration.json"))
 
 
 def extract_filename_without_extension(file_path):
