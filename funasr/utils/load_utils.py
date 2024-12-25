@@ -1,6 +1,7 @@
 import os
 import torch
 import json
+from io import BytesIO
 import torch.distributed as dist
 import numpy as np
 import kaldiio
@@ -17,6 +18,11 @@ except:
 import pdb
 import subprocess
 from subprocess import CalledProcessError, run
+
+try:
+    from pydub import AudioSegment
+except:
+    pass
 
 
 def is_ffmpeg_installed():
@@ -136,6 +142,10 @@ def load_audio_text_image_video(
 
 
 def load_bytes(input):
+    try:
+        input = validate_frame_rate(input)
+    except:
+        pass
     middle_data = np.frombuffer(input, dtype=np.int16)
     middle_data = np.asarray(middle_data)
     if middle_data.dtype.kind not in "iu":
@@ -149,6 +159,37 @@ def load_bytes(input):
     offset = i.min + abs_max
     array = np.frombuffer((middle_data.astype(dtype) - offset) / abs_max, dtype=np.float32)
     return array
+
+
+def validate_frame_rate(
+    input,
+    fs: int = 16000,
+):
+
+    # 将文件读取为字节流
+    byte_data = BytesIO(input)
+
+    # 使用 pydub 加载音频
+    try:
+        audio = AudioSegment.from_file(byte_data)
+    except:
+        raise RuntimeError(
+            "You are decoding the pcm data, please install pydub first. via `pip install pydub`."
+        )
+
+    # 确保采样率为 16000 Hz
+    if audio.frame_rate != fs:
+        audio = audio.set_frame_rate(fs)
+
+        # 将重新采样后的音频导出为字节流
+        output = BytesIO()
+        audio.export(output, format="wav")
+        output.seek(0)
+
+        # 获取重新采样后的字节流数据
+        input = output.read()
+
+    return input
 
 
 def extract_fbank(data, data_len=None, data_type: str = "sound", frontend=None, **kwargs):
