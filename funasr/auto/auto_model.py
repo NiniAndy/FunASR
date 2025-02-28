@@ -160,7 +160,9 @@ class AutoModel:
         # if spk_model is not None, build spk model else None
         spk_model = kwargs.get("spk_model", None)
         spk_kwargs = {} if kwargs.get("spk_kwargs", {}) is None else kwargs.get("spk_kwargs", {})
-        cb_kwargs = {} if spk_kwargs.get("cb_kwargs", {}) is None else spk_kwargs.get("cb_kwargs", {})
+        cb_kwargs = (
+            {} if spk_kwargs.get("cb_kwargs", {}) is None else spk_kwargs.get("cb_kwargs", {})
+        )
         if spk_model is not None:
             logging.info("Building SPK model.")
             spk_kwargs["model"] = spk_model
@@ -431,7 +433,11 @@ class AutoModel:
         if pbar:
             # pbar.update(1)
             pbar.set_description(f"rtf_avg: {time_escape_total/time_speech_total:0.3f}")
-        torch.cuda.empty_cache()
+
+        device = next(model.parameters()).device
+        if device.type == "cuda":
+            with torch.cuda.device(device):
+                torch.cuda.empty_cache()
         return asr_result_list
 
     def inference_with_vad(self, input, input_len=None, **cfg):
@@ -608,8 +614,41 @@ class AutoModel:
 
             # speaker embedding cluster after resorted
             if self.spk_model is not None and kwargs.get("return_spk_res", True):
-                if raw_text is None:
-                    logging.error("Missing punc_model, which is required by spk_model.")
+                # 1. 先检查时间戳
+                has_timestamp = (
+                    hasattr(self.model, "internal_punc") or
+                    self.punc_model is not None or
+                    "timestamp" in result
+                )
+                
+                if not has_timestamp:
+                    logging.error("Need timestamp support...")
+                    return results_ret_list
+
+                # 2. 初始化 punc_res
+                punc_res = None
+                
+                # 3. 根据不同情况设置 punc_res
+                if hasattr(self.model, "internal_punc"):
+                    punc_res = [{
+                        "text": result["text"],
+                        "punc_array": result.get("punc_array", []),
+                        "timestamp": result.get("timestamp", [])
+                    }]
+                elif self.punc_model is not None:
+                    punc_res = self.inference(
+                        result["text"], 
+                        model=self.punc_model, 
+                        kwargs=self.punc_kwargs, 
+                        **cfg
+                    )
+                else:
+                    # 如果只有时间戳，创建一个基本的 punc_res
+                    punc_res = [{
+                        "text": result["text"],
+                        "punc_array": [],  # 空的标点数组
+                        "timestamp": result["timestamp"]
+                    }]
                 all_segments = sorted(all_segments, key=lambda x: x[0])
                 spk_embedding = result["spk_embedding"]
                 labels = self.cb_model(
