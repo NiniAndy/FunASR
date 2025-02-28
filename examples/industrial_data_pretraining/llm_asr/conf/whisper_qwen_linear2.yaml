@@ -17,11 +17,16 @@ audio_encoder_conf:
     hub: ms
     freeze: true
 
+#llm: Qwen1.5-7b-chat
+#llm_conf:
+#  hub: hf
+#  freeze: true
+#  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat_raw"
 llm: Qwen1.5-7b-chat
 llm_conf:
   hub: hf
   freeze: true
-  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat_raw"
+  init_param_path: "/ssd/zhuang/code/LLM/Qwen1.5-7B-Chat/"
 
 audio_adaptor: Transformer
 audio_adaptor_conf:
@@ -75,7 +80,11 @@ dataset_conf:
   retry: 20
 
 
+#tokenizer: HuggingfaceTokenizer
+#tokenizer_conf:
+#  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat_raw"
 tokenizer: HuggingfaceTokenizer
 tokenizer_conf:
-  init_param_path: "/nfs/zhifu.gzf/init_model/qwen/Qwen1___5-7B-Chat_raw"
+  unk_symbol: <unk>
+  init_param_path: "/ssd/zhuang/code/LLM/Qwen1.5-7B-Chat/"
 

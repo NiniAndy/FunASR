@@ -117,8 +117,8 @@ class AudioPNYDataset(torch.utils.data.Dataset):
 
 
         pny_list = make_pny(wrong_text)
-        blank = ['<blank>']
-        pny_list = list(chain(*zip(pny_list, blank * (len(pny_list) - 1)), [pny_list[-1]]))
+        # blank = ['<blank>']
+        # pny_list = list(chain(*zip(pny_list, blank * (len(pny_list) - 1)), [pny_list[-1]]))
         pny = self.pny_tokenizer.tokens2ids(pny_list)
         pny = torch.tensor(pny, dtype=torch.int64)
         pny_lengths = torch.tensor([pny.size(0)], dtype=torch.int32)

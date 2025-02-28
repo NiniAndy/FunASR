@@ -266,7 +266,7 @@ class AutoModel:
         pny_tokenizer = kwargs.get("pny_tokenizer", None)
         pny_vocab_size = -1
         if pny_tokenizer is not None:
-            if type(tokenizer) == str:
+            if type(pny_tokenizer) == str:
                 pny_tokenizer_class = tables.tokenizer_classes.get(pny_tokenizer)
                 pny_tokenizer = pny_tokenizer_class(**kwargs.get("pny_tokenizer_conf", {}))
                 kwargs["pny_token_list"] = (pny_tokenizer.token_list if hasattr(pny_tokenizer, "token_list") else None)

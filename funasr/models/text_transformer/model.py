@@ -4,6 +4,7 @@ from typing import Union, Dict, List, Tuple, Optional
 import time
 import torch
 import torch.nn as nn
+from torch.nn.utils.rnn import pad_sequence
 from torch.cuda.amp import autocast
 
 from funasr.losses.label_smoothing_loss import LabelSmoothingLoss
@@ -37,14 +38,18 @@ class TextTransformer(nn.Module):
         specaug_conf: dict = None,
         normalize: str = None,
         normalize_conf: dict = None,
-        encoder: str = None,
-        encoder_conf: dict = None,
-        text_encoder: str = None,
-        text_encoder_conf: dict = None,
-        decoder: str = None,
-        decoder_conf: dict = None,
-        text_decoder: str = None,
-        text_decoder_conf: dict = None,
+        audio_encoder: str = None,
+        audio_encoder_conf: dict = None,
+        pny2han_encoder: str = None,
+        pny2han_encoder_conf: dict = None,
+        context_encoder: str = None,
+        context_encoder_conf: dict = None,
+        align_decoder: str = None,
+        align_decoder_conf: dict = None,
+        pny2han_decoder: str = None,
+        pny2han_decoder_conf: dict = None,
+        context_decoder: str = None,
+        context_decoder_conf: dict = None,
         ctc: str = None,
         ctc_conf: dict = None,
         ctc_weight: float = 0.5,
@@ -81,78 +86,85 @@ class TextTransformer(nn.Module):
         self.normalize = normalize
 
         # audio encoder
-        encoder_class = tables.encoder_classes.get(encoder)
-        encoder = encoder_class(input_size=input_size, **encoder_conf)
-        encoder_output_size = encoder.output_size()
-        self.encoder = encoder
+        audio_encoder_class = tables.encoder_classes.get(audio_encoder)
+        audio_encoder = audio_encoder_class(input_size=input_size, **audio_encoder_conf)
+        audio_encoder_size = audio_encoder.output_size()
+        self.audio_encoder = audio_encoder
 
         # pny text encoder
-        input_vocal_size = kwargs['pny_vocab_size']
-        text_encoder_class = tables.encoder_classes.get(text_encoder)
-        text_encoder = text_encoder_class(input_vocal_size=input_vocal_size, **text_encoder_conf)
-        text_encoder_output_size = text_encoder.output_size()
-        self.text_encoder = text_encoder
+        pny_vocab_size = kwargs['pny_vocab_size']
+        pny2han_encoder_class = tables.encoder_classes.get(pny2han_encoder)
+        pny2han_encoder = pny2han_encoder_class(input_vocal_size=pny_vocab_size, **pny2han_encoder_conf)
+        pny2han_encoder_size = pny2han_encoder.output_size()
+        self.pny2han_encoder = pny2han_encoder
 
-        # pny text decoder & ctc
-        assert ctc_weight <= 1.0 and ctc_weight >= 0.0, "ctc_weight must be in [0.0, 1.0]"
-        if ctc_weight == 1.0:
-            text_decoder = None
-            text_ctc = CTC(odim=vocab_size, encoder_output_size=text_encoder_output_size, **ctc_conf)
-        else:
-            text_decoder_class = tables.decoder_classes.get(text_decoder)
-            text_decoder = text_decoder_class(
-                vocab_size=vocab_size,
-                encoder_output_size=text_encoder_output_size,
-                **text_decoder_conf
-            )
-            if ctc_weight > 0.0:
-                text_ctc = CTC(odim=vocab_size, encoder_output_size=text_encoder_output_size, **ctc_conf)
-            else:
-                text_ctc = None
+        # context encoder
+        context_encoder_class = tables.encoder_classes.get(context_encoder)
+        if context_encoder_conf["combine"]  == "concat":
+            context_encoder_conf["input_size"] = audio_encoder_size + pny2han_encoder_size
+        elif context_encoder_conf["combine"]  == "add":
+            context_encoder_conf["input_size"] = audio_encoder_size
+        context_encoder = context_encoder_class( **context_encoder_conf)
+        context_encoder_size = context_encoder.output_size()
+        self.context_encoder = context_encoder
 
-        self.text_decoder = text_decoder
-        self.text_ctc = text_ctc
-        # self.text_ctc = None
+        # align decoder
+        align_decoder_class = tables.decoder_classes.get(align_decoder)
+        align_decoder = align_decoder_class(
+            vocab_size=pny_vocab_size,
+            encoder_output_size=audio_encoder_size,
+            **align_decoder_conf)
+        self.align_decoder = align_decoder
 
+        # pny text decoder
+        pny2han_decoder_class = tables.decoder_classes.get(pny2han_decoder)
+        pny2han_decoder = pny2han_decoder_class(
+            vocab_size=vocab_size,
+            encoder_output_size=pny2han_encoder_size,
+            **pny2han_decoder_conf)
+        self.pny2han_decoder = pny2han_decoder
 
-        # audio decoder & ctc
-        if ctc_weight == 1.0:
-            ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
-            decoder = None
-        else:
-            decoder_class = tables.decoder_classes.get(decoder)
-            decoder = decoder_class(
-                vocab_size=vocab_size,
-                encoder_output_size=encoder_output_size,
-                **decoder_conf
-            )
-            if ctc_weight > 0.0:
-                ctc = CTC(odim=vocab_size, encoder_output_size=encoder_output_size, **ctc_conf)
-            else:
-                ctc = None
+        # context decoder
+        context_decoder_class = tables.decoder_classes.get(context_decoder)
+        context_decoder = context_decoder_class(
+            vocab_size=vocab_size,
+            encoder_output_size=context_encoder_size,
+            **context_decoder_conf)
+        self.context_decoder = context_decoder
 
-        self.decoder = decoder
-        self.ctc = ctc
+        # audio ctc
+        audio_ctc = CTC(odim=pny_vocab_size, encoder_output_size=audio_encoder_size, **ctc_conf)
+        self.audio_ctc = audio_ctc
+
+        # pny text ctc
+        pny2han_ctc = CTC(odim=vocab_size, encoder_output_size=pny2han_encoder_size, **ctc_conf)
+        self.pny2han_ctc = pny2han_ctc
+
+        # context ctc
+        context_ctc = CTC(odim=vocab_size, encoder_output_size=context_encoder_size, **ctc_conf)
+        self.context_ctc = context_ctc
 
         self.tokenizer = kwargs.get("tokenizer")
+        self.pny_tokenizer = kwargs.get("pny_tokenizer")
         self.blank_id = blank_id
         self.sos = sos if sos is not None else vocab_size - 1
         self.eos = eos if eos is not None else vocab_size - 1
+        self.pny_vocab_size = pny_vocab_size
         self.vocab_size = vocab_size
         self.ignore_id = ignore_id
         self.ctc_weight = ctc_weight
         self.pny_tokenizer = kwargs.get("pny_tokenizer")
 
 
-        if not hasattr(self.encoder, "interctc_use_conditioning"):
-            self.encoder.interctc_use_conditioning = False
-        if self.encoder.interctc_use_conditioning:
-            self.encoder.conditioning_layer = torch.nn.Linear(vocab_size, self.encoder.output_size())
-        self.interctc_weight = interctc_weight
-
-
-        self.criterion_att = LabelSmoothingLoss(
+        self.han_criterion_att = LabelSmoothingLoss(
             size=vocab_size,
+            padding_idx=ignore_id,
+            smoothing=lsm_weight,
+            normalize_length=length_normalized_loss,
+        )
+
+        self.pny_criterion_att = LabelSmoothingLoss(
+            size=pny_vocab_size,
             padding_idx=ignore_id,
             smoothing=lsm_weight,
             normalize_length=length_normalized_loss,
@@ -173,8 +185,8 @@ class TextTransformer(nn.Module):
         speech_lengths: torch.Tensor,
         text: torch.Tensor,
         text_lengths: torch.Tensor,
-        # pny: torch.Tensor,
-        # pny_lengths: torch.Tensor,
+        pny: torch.Tensor,
+        pny_lengths: torch.Tensor,
         **kwargs,
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:
         """Encoder + Decoder + Calc loss
@@ -194,12 +206,47 @@ class TextTransformer(nn.Module):
         batch_size = speech.shape[0]
         stats = dict()
 
-        # 1. Audio Encoder
-        encoder_out, encoder_out_lens = self.encode(speech, speech_lengths)
-        intermediate_outs = None
-        if isinstance(encoder_out, tuple):
-            intermediate_outs = encoder_out[1]
-            encoder_out = encoder_out[0]
+        # 1. Audio Encoder + Audio CTC
+        audio_encoder_out, audio_encoder_out_lens = self.audio_encode(speech, speech_lengths)
+        audio_intermediate_outs = None
+        if isinstance(audio_encoder_out, tuple):
+            audio_intermediate_outs = audio_encoder_out[1]
+            audio_encoder_out = audio_encoder_out[0]
+
+        audio_loss_ctc, audio_cer_ctc = self._calc_ctc_loss(
+            audio_encoder_out, audio_encoder_out_lens, text, text_lengths, self.audio_ctc)
+
+        # 2. Align the audio to pny
+        align_decoder_input, pny2han_encoder_input = self._align_audio2pny(audio_encoder_out, audio_encoder_out_lens, pny, pny_lengths)
+        align_loss_att, align_acc_att = self._calc_align_att_loss(audio_encoder_out, audio_encoder_out_lens, align_decoder_input, pny, pny_lengths)
+
+        # 3. pny2han Encoder + Decoder
+        ## pny2han encoder
+        pny2han_encoder_out, pny2han_encoder_out_lens, pny2han_encoder_out_dict = self.pny2han_encoder(
+            pny2han_encoder_input, audio_encoder_out_lens, return_layers_output=True)
+        ## pny2han ctc
+        pny2han_loss_ctc, _ =self._calc_ctc_loss(
+            pny2han_encoder_out, audio_encoder_out_lens, text, text_lengths, self.pny2han_ctc)
+        ## pny2han att
+        pny2han_loss_att, pny2han_acc_att,_ ,_ , pny2han_decoder_intermediate_outs = self._calc_pny2han_att_loss(
+            pny2han_encoder_out, pny2han_encoder_out_lens, text, text_lengths)
+
+        # 4. Context Encoder + Decoder
+        ## context encoder
+        context_encoder_out, _ = self.context_encoder(
+            audio_encoder_out, audio_encoder_out_lens, pny2han_encoder_out_dict)
+        ## context ctc
+        context_loss_ctc, _ = self._calc_ctc_loss(context_encoder_out, audio_encoder_out_lens, text, text_lengths, self.context_ctc)
+        ## context att
+
+        context_loss_att, context_acc_att = self._calc_context_att_loss(
+            context_encoder_out, audio_encoder_out_lens, pny2han_decoder_intermediate_outs, text, text_lengths)
+
+        loss_ctc = audio_loss_ctc + pny2han_loss_ctc + context_loss_ctc
+        loss_att = align_loss_att + pny2han_loss_att + context_loss_att
+
+
+
 
         pny, pny_lengths = self.ctc_out(encoder_out, encoder_out_lens)
         pny = pny.masked_fill(pny == -1, self.eos)
@@ -207,13 +254,13 @@ class TextTransformer(nn.Module):
             pny_lengths = pny_lengths[:, 0]
 
         # 2. Text Encoder
-        text_encoder_out, text_encoder_out_lens = self.text_encode(pny, pny_lengths)
+        pny2han_encoder_out, pny2han_encoder_out_lens = self.text_encode(pny, pny_lengths)
 
         # 3. CTC loss definition
         loss_ctc, cer_ctc, loss_text_ctc, cer_text_ctc = None, None, None, None
         if self.ctc_weight != 0.0:
             loss_ctc, cer_ctc = self._calc_ctc_loss(encoder_out, encoder_out_lens, text, text_lengths)
-            loss_text_ctc, cer_text_ctc = self._calc_text_ctc_loss(text_encoder_out, text_encoder_out_lens, text, text_lengths)
+            loss_text_ctc, cer_text_ctc = self._calc_text_ctc_loss(pny2han_encoder_out, pny2han_encoder_out_lens, text, text_lengths)
             loss_ctc = loss_ctc + loss_text_ctc
             # Collect CTC branch stats
             stats["loss_ctc"] = loss_ctc.detach() if loss_ctc is not None else None
@@ -224,8 +271,8 @@ class TextTransformer(nn.Module):
 
         # decoder: Attention decoder branch
         loss_text_att, acc_text_att, cer_text_att, wer_text_att, text_decoder_output_list = self._calc_text_att_loss(
-            text_encoder_out,
-            text_encoder_out_lens,
+            pny2han_encoder_out,
+            pny2han_encoder_out_lens,
             text,
             text_lengths)
 
@@ -236,12 +283,7 @@ class TextTransformer(nn.Module):
         stats["wer_text_att"] = wer_text_att
 
 
-        loss_att, acc_att, cer_att, wer_att = self._calc_att_loss(
-            encoder_out,
-            encoder_out_lens,
-            text,
-            text_lengths,
-            text_decoder_output_list)
+        loss_att, acc_att, cer_att, wer_att = self._calc_att_loss(encoder_out, encoder_out_lens, text, text_lengths, text_decoder_output_list)
 
         # 3. CTC-Att loss definition
         if self.ctc_weight == 0.0:
@@ -267,44 +309,100 @@ class TextTransformer(nn.Module):
         loss, stats, weight = force_gatherable((loss, stats, batch_size), loss.device)
         return loss, stats, weight
 
-    def encode(
-        self,
-        speech: torch.Tensor,
-        speech_lengths: torch.Tensor,
-        **kwargs,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Frontend + Encoder. Note that this method is used by asr_inference.py
-        Args:
-                speech: (Batch, Length, ...)
-                speech_lengths: (Batch, )
-                ind: int
-        """
-        with autocast(False):
 
+    def audio_encode(self, speech, speech_lengths, **kwargs,) :
+        with autocast(False):
             # Data augmentation
             if self.specaug is not None and self.training:
                 speech, speech_lengths = self.specaug(speech, speech_lengths)
-
             # Normalization for feature: e.g. Global-CMVN, Utterance-CMVN
             if self.normalize is not None:
                 speech, speech_lengths = self.normalize(speech, speech_lengths)
 
-        # Forward encoder
-        # feats: (Batch, Length, Dim)
-        # -> encoder_out: (Batch, Length2, Dim2)
-        if self.encoder.interctc_use_conditioning:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths, ctc=self.ctc)
+        if self.audio_encoder.interctc_use_conditioning:
+            encoder_out, encoder_out_lens, _ = self.audio_encoder(speech, speech_lengths, ctc=self.ctc)
         else:
-            encoder_out, encoder_out_lens, _ = self.encoder(speech, speech_lengths)
+            encoder_out, encoder_out_lens, _ = self.audio_encoder(speech, speech_lengths)
         intermediate_outs = None
         if isinstance(encoder_out, tuple):
             intermediate_outs = encoder_out[1]
             encoder_out = encoder_out[0]
-
         if intermediate_outs is not None:
             return (encoder_out, intermediate_outs), encoder_out_lens
-
         return encoder_out, encoder_out_lens
+
+
+    def _align_audio2pny(self, encoder_output, encoder_output_lens, pny, pny_lens):
+        batch_size = encoder_output.size(0)
+        device = encoder_output.device
+        with torch.no_grad():
+            compressed_ctc_batch = []
+            sample_ctc_batch = []
+            ctc_probs = self.audio_ctc.log_softmax(encoder_output).detach()
+            pred_tokens = ctc_probs.argmax(-1)
+            input_mask = torch.ones_like(pred_tokens, device=device)
+
+            for b in range(batch_size):
+                audio_encoder_output_len = encoder_output_lens[b]
+                pny_len = pny_lens[b]
+                ctc_prob = ctc_probs[b][: audio_encoder_output_len]  # [T, N]
+                text_b = pny[b][: pny_len] # [1, U]
+                text_audio_alignment = self.audio_ctc.force_align(ctc_prob, text_b).to(device)
+                exist_non_blank_mask = ~(text_audio_alignment==0).to(device)
+                pred_token = pred_tokens[b][: audio_encoder_output_len] * exist_non_blank_mask
+                same_num = ((pred_token == text_audio_alignment) * exist_non_blank_mask).sum(0)
+                target_num = (exist_non_blank_mask.sum() - same_num).float() * self.sampling_ratio
+                target_num = target_num.long()
+                if target_num > 0:
+                    non_blank_indices = torch.nonzero(exist_non_blank_mask).squeeze()
+                    if len(non_blank_indices.size()) == 0:
+                        non_blank_indices = non_blank_indices.unsqueeze(0)
+                        random_indices = non_blank_indices
+                    else:
+                        random_indices = non_blank_indices[torch.randperm(len(non_blank_indices))[:target_num]]
+                    pred_token[random_indices] = text_audio_alignment[random_indices]
+                # 把相同的不为0的帧的概率平均
+                ctc_comp = self._average_repeats(ctc_prob, text_audio_alignment)
+                if ctc_comp.size(0) != pny_len:
+                    print(f"ctc_comp error: {ctc_comp.size(0)}, {text_b}")
+                compressed_ctc_batch.append(ctc_comp)
+                sample_ctc_batch.append(pred_token)
+
+            # paraformerV2 decoder input
+            padded_ctc_prob = pad_sequence(compressed_ctc_batch, batch_first=True).to(encoder_output.device)
+            # pny2han encoder input
+            padded_sample_ctc = pad_sequence(sample_ctc_batch, batch_first=True, padding_value=0).to(encoder_output.device)
+
+        return padded_ctc_prob, padded_sample_ctc
+
+    def _calc_align_att_loss(self, encoder_out, encoder_out_lens, align_decoder_input, pny, pny_lens,):
+        align_decoder_out, _ = self.align_decoder(
+            encoder_out, encoder_out_lens, align_decoder_input, pny_lens)
+        loss_align_att = self.pny_criterion_att(align_decoder_out, pny)
+        acc_align_att = th_accuracy(
+            align_decoder_out.view(-1, self.pny_vocab_size), pny, ignore_label=self.ignore_id)
+        return loss_align_att, acc_align_att
+
+
+    def _calc_pny2han_att_loss(self, encoder_out, encoder_out_lens, ys_pad, ys_pad_lens):
+        ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id)
+        ys_in_lens = ys_pad_lens + 1
+
+        # 1. Forward decoder
+        decoder_out, _,  intermediate_outs= self.pny2han_decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens)
+
+        # 2. Compute attention loss
+        loss_att = self.criterion_att(decoder_out, ys_out_pad)
+        acc_att = th_accuracy(decoder_out.view(-1, self.vocab_size), ys_out_pad, ignore_label=self.ignore_id, )
+
+        # Compute cer/wer using attention-decoder
+        if self.training or self.error_calculator is None:
+            cer_att, wer_att = None, None
+        else:
+            ys_hat = decoder_out.argmax(dim=-1)
+            cer_att, wer_att = self.error_calculator(ys_hat.cpu(), ys_pad.cpu())
+
+        return loss_att, acc_att, cer_att, wer_att, intermediate_outs
 
 
     def text_encode(
@@ -319,32 +417,18 @@ class TextTransformer(nn.Module):
                 pny_lengths: (Batch, )
                 ind: int
         """
-        encoder_out, encoder_out_lens, _ = self.text_encoder(pny, pny_lengths)
+        encoder_out, encoder_out_lens, _ = self.pny2han_encoder(pny, pny_lengths)
         return encoder_out, encoder_out_lens
 
 
-    def _calc_att_loss(
-        self,
-        encoder_out: torch.Tensor,
-        encoder_out_lens: torch.Tensor,
-        ys_pad: torch.Tensor,
-        ys_pad_lens: torch.Tensor,
-        text_decoder_output_list: List[torch.Tensor] = None,
-    ):
+    def _calc_att_loss(self, encoder_out, encoder_out_lens, ys_pad, ys_pad_lens, pny2han_decoder_out_dict):
         ys_in_pad, ys_out_pad = add_sos_eos(ys_pad, self.sos, self.eos, self.ignore_id)
         ys_in_lens = ys_pad_lens + 1
-
         # 1. Forward decoder
-        decoder_out, _ = self.decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens, text_decoder_output_list)
-
+        decoder_out, _ = self.context_decoder(encoder_out, encoder_out_lens, ys_in_pad, ys_in_lens, pny2han_decoder_out_dict)
         # 2. Compute attention loss
         loss_att = self.criterion_att(decoder_out, ys_out_pad)
-        acc_att = th_accuracy(
-            decoder_out.view(-1, self.vocab_size),
-            ys_out_pad,
-            ignore_label=self.ignore_id,
-        )
-
+        acc_att = th_accuracy(decoder_out.view(-1, self.vocab_size), ys_out_pad, ignore_label=self.ignore_id,)
         # Compute cer/wer using attention-decoder
         if self.training or self.error_calculator is None:
             cer_att, wer_att = None, None
@@ -357,8 +441,8 @@ class TextTransformer(nn.Module):
 
     def _calc_text_att_loss(
         self,
-        text_encoder_out: torch.Tensor,
-        text_encoder_out_lens: torch.Tensor,
+        pny2han_encoder_out: torch.Tensor,
+        pny2han_encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
     ):
@@ -366,7 +450,7 @@ class TextTransformer(nn.Module):
         ys_in_lens = ys_pad_lens + 1
 
         # 1. Forward decoder
-        decoder_out, _, decoder_out_list = self.text_decoder.forward_by_layer(text_encoder_out, text_encoder_out_lens, ys_in_pad, ys_in_lens)
+        decoder_out, _, decoder_out_list = self.text_decoder.forward_by_layer(pny2han_encoder_out, pny2han_encoder_out_lens, ys_in_pad, ys_in_lens)
 
         # 2. Compute attention loss
         loss_att = self.criterion_att(decoder_out, ys_out_pad)
@@ -385,38 +469,39 @@ class TextTransformer(nn.Module):
 
         return loss_att, acc_att, cer_att, wer_att, decoder_out_list
 
+
     def _calc_ctc_loss(
         self,
-        encoder_out: torch.Tensor,
-        encoder_out_lens: torch.Tensor,
-        ys_pad: torch.Tensor,
-        ys_pad_lens: torch.Tensor,
+        encoder_out,
+        encoder_out_lens,
+        ys_pad,
+        ys_pad_lens,
+        ctc,
     ):
         # Calc CTC loss
-        loss_ctc = self.ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
-
+        loss_ctc = ctc(encoder_out, encoder_out_lens, ys_pad, ys_pad_lens)
         # Calc CER using CTC
         cer_ctc = None
         if not self.training and self.error_calculator is not None:
-            ys_hat = self.ctc.argmax(encoder_out).data
+            ys_hat = ctc.argmax(encoder_out).data
             cer_ctc = self.error_calculator(ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_ctc, cer_ctc
 
 
     def _calc_text_ctc_loss(
         self,
-        text_encoder_out: torch.Tensor,
-        text_encoder_out_lens: torch.Tensor,
+        pny2han_encoder_out: torch.Tensor,
+        pny2han_encoder_out_lens: torch.Tensor,
         ys_pad: torch.Tensor,
         ys_pad_lens: torch.Tensor,
     ):
         # Calc CTC loss
-        loss_text_ctc = self.text_ctc(text_encoder_out, text_encoder_out_lens, ys_pad, ys_pad_lens)
+        loss_text_ctc = self.text_ctc(pny2han_encoder_out, pny2han_encoder_out_lens, ys_pad, ys_pad_lens)
 
         # Calc CER using CTC
         cer_text_ctc = None
         if not self.training and self.error_calculator is not None:
-            text_ys_hat = self.text_ctc.argmax(text_encoder_out).data
+            text_ys_hat = self.text_ctc.argmax(pny2han_encoder_out).data
             cer_text_ctc = self.error_calculator(text_ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_text_ctc, cer_text_ctc
 
@@ -682,10 +767,10 @@ class TextTransformer(nn.Module):
             pny_lengths = pny_lengths[:, 0]
 
         # 2. Text Encoder
-        text_encoder_out, text_encoder_out_lens = self.text_encode(pny, pny_lengths)
+        pny2han_encoder_out, pny2han_encoder_out_lens = self.text_encode(pny, pny_lengths)
 
         results = []
-        b, _, _ = text_encoder_out.size()
+        b, _, _ = pny2han_encoder_out.size()
         if isinstance(key[0], (list, tuple)):
             key = key[0]
         if len(key) < b:
@@ -701,16 +786,16 @@ class TextTransformer(nn.Module):
             # 单解码
             beam_size = 10
             length_penalty = 0.0
-            text_encoder_mask = (~make_pad_mask(text_encoder_out_lens)[:, None, :]).to(text_encoder_out.device)
+            pny2han_encoder_mask = (~make_pad_mask(pny2han_encoder_out_lens)[:, None, :]).to(pny2han_encoder_out.device)
             encoder_mask = (~make_pad_mask(encoder_out_lens)[:, None, :]).to(encoder_out.device)
-            second_results = mix_beam_search(self, encoder_out, encoder_mask, text_encoder_out, text_encoder_mask)
+            second_results = mix_beam_search(self, encoder_out, encoder_mask, pny2han_encoder_out, pny2han_encoder_mask)
             token_int = second_results[0].tokens
 
             # 双重解码
             # beam_size = 10
             # length_penalty = 0.0
-            # text_encoder_mask = (~make_pad_mask(text_encoder_out_lens)[:, None, :]).to(text_encoder_out.device)
-            # results = attention_beam_search(self, text_encoder_out, text_encoder_mask, beam_size, length_penalty)
+            # pny2han_encoder_mask = (~make_pad_mask(pny2han_encoder_out_lens)[:, None, :]).to(pny2han_encoder_out.device)
+            # results = attention_beam_search(self, pny2han_encoder_out, pny2han_encoder_mask, beam_size, length_penalty)
             #
             # # 2次解码
             # second_token_int = results[0].tokens
@@ -720,10 +805,10 @@ class TextTransformer(nn.Module):
             # second_pny = torch.tensor(second_pny_id, dtype=torch.int64).unsqueeze(0).to(device=kwargs["device"])
             # second_pny_lengths = torch.tensor([second_pny.size(1)], dtype=torch.int32).to(device=kwargs["device"])
             #
-            # second_text_encoder_out, second_text_encoder_out_lens = self.text_encode(second_pny, second_pny_lengths)
-            # second_text_encoder_mask = (~make_pad_mask(second_text_encoder_out_lens)[:, None, :]).to(second_text_encoder_out.device)
+            # second_pny2han_encoder_out, second_pny2han_encoder_out_lens = self.text_encode(second_pny, second_pny_lengths)
+            # second_pny2han_encoder_mask = (~make_pad_mask(second_pny2han_encoder_out_lens)[:, None, :]).to(second_pny2han_encoder_out.device)
             # encoder_mask = (~make_pad_mask(encoder_out_lens)[:, None, :]).to(encoder_out.device)
-            # second_results = mix_beam_search(self, encoder_out, encoder_mask, second_text_encoder_out, second_text_encoder_mask)
+            # second_results = mix_beam_search(self, encoder_out, encoder_mask, second_pny2han_encoder_out, second_pny2han_encoder_mask)
             #
             # token_int = second_results[0].tokens
 

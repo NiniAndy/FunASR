@@ -27,7 +27,7 @@ raw_data=/data/nas/zhuang/dataset/data_aishell/
 
 
 # exp tag
-tag="exp1"
+tag="exp2"
 workspace=`pwd`
 
 master_port=12345

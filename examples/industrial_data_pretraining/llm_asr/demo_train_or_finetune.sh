@@ -15,11 +15,11 @@ gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 #++data_type_list='["source", "target"]' \
 #++jsonl_file_out=/Users/zhifu/funasr1.0/test_local/audio_datasets.jsonl
 
-train_data="/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/train_960/audio_datasets.jsonl"
-val_data="/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/dev/audio_datasets.jsonl"
+train_data=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/audio_datasets.jsonl
+val_data=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/dev/audio_datasets.jsonl
 
 # exp output dir
-output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_exp"
+output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_qwen_aishell1_exp"
 log_file="${output_dir}/log.txt"
 
 workspace=`pwd`

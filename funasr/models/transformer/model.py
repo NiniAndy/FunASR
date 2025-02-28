@@ -312,10 +312,7 @@ class Transformer(nn.Module):
             cer_ctc = self.error_calculator(ys_hat.cpu(), ys_pad.cpu(), is_ctc=True)
         return loss_ctc, cer_ctc
 
-    def init_beam_search(
-        self,
-        **kwargs,
-    ):
+    def init_beam_search(self, **kwargs,):
         from funasr.models.transformer.search import BeamSearch
         from funasr.models.transformer.scorers.ctc import CTCPrefixScorer
         from funasr.models.transformer.scorers.length_bonus import LengthBonus

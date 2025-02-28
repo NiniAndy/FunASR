@@ -71,7 +71,7 @@ specaug_conf:
     num_time_mask: 2
 
 train_conf:
-  accum_grad: 4
+  accum_grad: 1
   grad_clip: 5
   max_epoch: 240
   keep_nbest_models: 10

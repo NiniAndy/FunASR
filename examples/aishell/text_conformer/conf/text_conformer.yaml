@@ -101,34 +101,34 @@ train_conf:
   keep_nbest_models: 10
   log_interval: 50
 
-#optim: adam
-#optim_conf:
-#   lr: 0.0005
-#scheduler: warmuplr
-#scheduler_conf:
-#   warmup_steps: 30000
-
-
 optim: adam
 optim_conf:
-   lr: 0.0001
+   lr: 0.0005
 scheduler: warmuplr
 scheduler_conf:
-   warmup_steps: 15000
+   warmup_steps: 30000
 
-#dataset: AudioPNYDataset
-#dataset_conf:
-#    index_ds: IndexDSJsonl
-#    batch_sampler: EspnetStyleBatchSampler
-#    batch_type: length # example or length
-#    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
-#    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
-#    buffer_size: 1024
-#    shuffle: True
-#    num_workers: 4
-#    preprocessor_speech: SpeechPreprocessSpeedPerturb
-#    preprocessor_speech_conf:
-#      speed_perturb: [0.9, 1.0, 1.1]
+
+#optim: adam
+#optim_conf:
+#   lr: 0.0001
+#scheduler: warmuplr
+#scheduler_conf:
+#   warmup_steps: 15000
+
+dataset: AudioPNYDataset
+dataset_conf:
+    index_ds: IndexDSJsonl
+    batch_sampler: EspnetStyleBatchSampler
+    batch_type: length # example or length
+    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
+    buffer_size: 1024
+    shuffle: True
+    num_workers: 4
+    preprocessor_speech: SpeechPreprocessSpeedPerturb
+    preprocessor_speech_conf:
+      speed_perturb: [0.9, 1.0, 1.1]
 #    preprocessor_err: TextPreprocessRandomError
 #    preprocessor_err_conf:
 #      max_mask_prob: 0.6
@@ -142,19 +142,6 @@ scheduler_conf:
 #      vowel_distence_path: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/pinyin/vowel_distance.json"
 #      threshold: 0.5
 
-dataset: AudioDataset
-dataset_conf:
-    index_ds: IndexDSJsonl
-    batch_sampler: EspnetStyleBatchSampler
-    batch_type: length # example or length
-    batch_size: 25000 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
-    max_token_length: 2048 # filter samples if source_token_len+target_token_len > max_token_length,
-    buffer_size: 1024
-    shuffle: True
-    num_workers: 4
-    preprocessor_speech: SpeechPreprocessSpeedPerturb
-    preprocessor_speech_conf:
-      speed_perturb: [0.9, 1.0, 1.1]
 
 
 tokenizer: CharTokenizer
@@ -165,7 +152,7 @@ tokenizer_conf:
 pny_tokenizer: CharTokenizer
 pny_tokenizer_conf:
   unk_symbol: <unk>
-  token_list: "/ssd/zhuang/code/FunASR/examples/ChineseCorrection/data/pinyin/tokens.txt"
+  token_list: "/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/zh_token_list/pny/tokens.txt"
 
 ctc_conf:
     dropout_rate: 0.0
