@@ -57,12 +57,8 @@ def load_audio_text_image_video(
         if data_type is not None and isinstance(data_type, (list, tuple)):
             data_types = [data_type] * len(data_or_path_or_list)
             data_or_path_or_list_ret = [[] for d in data_type]
-            for i, (data_type_i, data_or_path_or_list_i) in enumerate(
-                zip(data_types, data_or_path_or_list)
-            ):
-                for j, (data_type_j, data_or_path_or_list_j) in enumerate(
-                    zip(data_type_i, data_or_path_or_list_i)
-                ):
+            for i, (data_type_i, data_or_path_or_list_i) in enumerate(zip(data_types, data_or_path_or_list)):
+                for j, (data_type_j, data_or_path_or_list_j) in enumerate(zip(data_type_i, data_or_path_or_list_i)):
                     data_or_path_or_list_j = load_audio_text_image_video(
                         data_or_path_or_list_j,
                         fs=fs,
@@ -75,10 +71,7 @@ def load_audio_text_image_video(
 
             return data_or_path_or_list_ret
         else:
-            return [
-                load_audio_text_image_video(
-                    audio, fs=fs, audio_fs=audio_fs, data_type=data_type, **kwargs
-                )
+            return [load_audio_text_image_video(audio, fs=fs, audio_fs=audio_fs, data_type=data_type, **kwargs)
                 for audio in data_or_path_or_list
             ]
     if isinstance(data_or_path_or_list, str) and data_or_path_or_list.startswith(

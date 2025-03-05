@@ -5,6 +5,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchaudio
 from torch.cuda.amp import autocast
 import re
 from funasr.models.scama.utils import sequence_mask
@@ -85,13 +86,13 @@ class LLMASR(nn.Module):
             audio_encoder = model.model.model.encoder
 
             # self.frontend = frontend
-
         elif hub == "hf":
             pass
         else:
             encoder_class = tables.encoder_classes.get(audio_encoder)
             audio_encoder = encoder_class(input_size=input_size, **audio_encoder_conf)
             audio_encoder_output_size = audio_encoder.output_size()
+
         freeze = audio_encoder_conf.get("freeze", True)
         if freeze:
             for name, param in audio_encoder.named_parameters():
@@ -195,9 +196,7 @@ class LLMASR(nn.Module):
             _, l, _ = encoder_out.shape
             # [audio, bos, prompt, input, pad]
             encoder_outs_pad = F.pad(encoder_out, (0, 0, 0, token_num - l, 0, 0), value=0.0)
-            inputs_embeds = encoder_outs_pad * audio_mask[:, :, None] + inputs_embeds * (
-                1.0 - audio_mask[:, :, None]
-            )
+            inputs_embeds = encoder_outs_pad * audio_mask[:, :, None] + inputs_embeds * (1.0 - audio_mask[:, :, None])
 
         model_outputs = self.llm(
             inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels_ids
@@ -218,6 +217,9 @@ class LLMASR(nn.Module):
         loss, stats, weight = force_gatherable((loss, stats, batch_size), loss.device)
         return loss, stats, weight
 
+
+
+
     def encode(
         self,
         speech: torch.Tensor,
@@ -231,6 +233,9 @@ class LLMASR(nn.Module):
         else:
             encoder_out, encoder_out_lens = res, speech_lengths
         return encoder_out, encoder_out_lens
+
+
+
 
     def inference(
         self,
@@ -247,10 +252,11 @@ class LLMASR(nn.Module):
         if kwargs.get("batch_size", 1) > 1:
             raise NotImplementedError("batch decoding is not implemented")
 
+        # data_in = ["/data/nas/zhuang/dataset/data_aishell//data_aishell/wav/test/S0770/BAC009S0770W0183.wav"]
+        # data_in = ["/data/nas/zhuang/dataset/data_aishell//data_aishell/wav/test/S0770/BAC009S0770W0179.wav"]
+
         meta_data = {}
-        if (
-            isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"
-        ):  # fbank
+        if (isinstance(data_in, torch.Tensor) and kwargs.get("data_type", "sound") == "fbank"):  # fbank
             speech, speech_lengths = data_in, data_lengths
             if len(speech.shape) < 3:
                 speech = speech[None, :, :]
@@ -266,16 +272,16 @@ class LLMASR(nn.Module):
                 data_type=kwargs.get("data_type", "sound"),
                 tokenizer=tokenizer,
             )
+
+            # audio_sample_list, _ = torchaudio.load(data_in[0])
+            # audio_sample_list = [audio_sample_list[0]]
+
             time2 = time.perf_counter()
             meta_data["load_data"] = f"{time2 - time1:0.3f}"
-            speech, speech_lengths = extract_fbank(
-                audio_sample_list, data_type=kwargs.get("data_type", "sound"), frontend=frontend
-            )
+            speech, speech_lengths = extract_fbank(audio_sample_list, data_type=kwargs.get("data_type", "sound"), frontend=frontend)
             time3 = time.perf_counter()
             meta_data["extract_feat"] = f"{time3 - time2:0.3f}"
-            meta_data["batch_data_time"] = (
-                speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000
-            )
+            meta_data["batch_data_time"] = (speech_lengths.sum().item() * frontend.frame_shift * frontend.lfr_n / 1000)
 
         speech = speech.to(device=kwargs["device"])
         speech_lengths = speech_lengths.to(device=kwargs["device"])
@@ -297,17 +303,15 @@ class LLMASR(nn.Module):
             inputs_embeds = self.llm.model.model.embed_tokens(prompt_ids)
         else:
             inputs_embeds = self.llm.model.model.model.embed_tokens(prompt_ids)
+        inputs_embeds = torch.cat((inputs_embeds[None, :, :], encoder_out), dim=1)  # [prompt, audio]
 
-        inputs_embeds = torch.cat(
-            (inputs_embeds[None, :, :], encoder_out), dim=1
-        )  # [prompt, audio]
-        attention_mask = torch.ones(inputs_embeds.size()[:-1], dtype=torch.long).to(
-            kwargs["device"]
-        )
+        # inputs_embeds = encoder_out  # [audio]
+
+        attention_mask = torch.ones(inputs_embeds.size()[:-1], dtype=torch.long).to(kwargs["device"])
 
         preds = self.llm.generate(
             inputs_embeds=inputs_embeds,
-            max_length=kwargs.get("max_length", 200),
+            # max_length=kwargs.get("max_length", 200),
             max_new_tokens=kwargs.get("max_new_tokens", 200),
             num_beams=kwargs.get("num_beams", 4),
             do_sample=kwargs.get("do_sample", False),
@@ -325,6 +329,7 @@ class LLMASR(nn.Module):
         text = tokenizer.batch_decode(preds, add_special_tokens=False, skip_special_tokens=True)
 
         text = text[0].split(": ")[-1]
+        text = text.split("：")[-1]
         text = text.strip()
 
         # preds = torch.argmax(model_outputs.logits, -1)
@@ -336,6 +341,7 @@ class LLMASR(nn.Module):
             ibest_writer = self.writer[f"{0 + 1}best_recog"]
 
         results = []
+
         result_i = {"key": key[0], "text": text}
         results.append(result_i)
 
@@ -396,9 +402,7 @@ class LLMASR2(nn.Module):
             # frontend = model.kwargs.get("frontend")
             audio_encoder_output_size = model.model.encoder_output_size
 
-            audio_encoder = (
-                model.model.model.encoder if hasattr(model.model, "model") else model.model.encoder
-            )
+            audio_encoder = (model.model.model.encoder if hasattr(model.model, "model") else model.model.encoder)
 
             # self.frontend = frontend
 
