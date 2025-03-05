@@ -13,7 +13,6 @@ root=/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/ll
 log_file=${root}/test.log.txt
 echo "log_file: ${log_file}"
 
-
 python ../../../funasr/bin/inference.py \
 --config-path="${root}" \
 --config-name="config.yaml" \
