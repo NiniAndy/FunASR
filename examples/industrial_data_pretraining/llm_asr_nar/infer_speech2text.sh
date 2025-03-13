@@ -35,7 +35,7 @@ inference_scp="wav.scp"
 # model detail
 exp_dir=/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr
 model_dir=llm_asr_whisper_linear_qwen_ls960_exp3
-inference_checkpoint=model.pt.ep4
+inference_checkpoint=model.pt.best
 
 if [ ${inference_device} == "cuda" ]; then
     nj=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')

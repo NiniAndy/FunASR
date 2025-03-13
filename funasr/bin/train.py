@@ -193,9 +193,7 @@ def main(**kwargs):
 
     # dataset
     logging.info("Build dataloader")
-    dataloader_class = tables.dataloader_classes.get(
-        kwargs["dataset_conf"].get("dataloader", "DataloaderMapStyle")
-    )
+    dataloader_class = tables.dataloader_classes.get(kwargs["dataset_conf"].get("dataloader", "DataloaderMapStyle"))
     dataloader = dataloader_class(**kwargs)
     # dataloader_tr, dataloader_val = dataloader_class(**kwargs)
     trainer = Trainer(

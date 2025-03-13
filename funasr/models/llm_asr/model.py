@@ -291,8 +291,8 @@ class LLMASR(nn.Module):
 
         # adaptor
         encoder_out = self.audio_adaptor(encoder_out)
-
-        prompt_pre = "USER: \nINSTRUCTION: {}\nINPUT: ".format(prompt)
+        prompt_pre = "Transcribe speech to text."
+        # prompt_pre = "USER: \nINSTRUCTION: {}\nINPUT: ".format(prompt)
         prompt_ids = tokenizer.encode(prompt_pre)
         prompt_length = len(prompt_ids)
         prompt_ids = torch.tensor(prompt_ids, dtype=torch.int64).to(kwargs["device"])
@@ -303,7 +303,8 @@ class LLMASR(nn.Module):
             inputs_embeds = self.llm.model.model.embed_tokens(prompt_ids)
         else:
             inputs_embeds = self.llm.model.model.model.embed_tokens(prompt_ids)
-        inputs_embeds = torch.cat((inputs_embeds[None, :, :], encoder_out), dim=1)  # [prompt, audio]
+        # inputs_embeds = torch.cat((inputs_embeds[None, :, :], encoder_out), dim=1)  # [prompt, audio]
+        inputs_embeds = torch.cat((encoder_out, inputs_embeds[None, :, :]), dim=1) # [audio, prompt]
 
         # inputs_embeds = encoder_out  # [audio]
 
@@ -331,6 +332,7 @@ class LLMASR(nn.Module):
         text = text[0].split(": ")[-1]
         text = text.split("：")[-1]
         text = text.strip()
+        text = text.upper()
 
         # preds = torch.argmax(model_outputs.logits, -1)
 

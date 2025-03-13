@@ -76,23 +76,28 @@ class LLMASRNAR(nn.Module):
         if hub == "funasr":
             from funasr import AutoModel
 
-            init_param_path = encoder_conf.get(
-                "init_param_path",
-                "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-            )
+            init_param_path = encoder_conf.get("init_param_path", "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",)
             model = AutoModel(model=init_param_path, model_revision="master")
             # frontend = model.kwargs.get("frontend")
             model.model.decoder = None
 
-            self.audio_encoder = model.model
+            audio_encoder = model.model
             # self.frontend = frontend
-
         elif hub == "hf":
             pass
         else:
             encoder_class = tables.encoder_classes.get(encoder)
-            encoder = encoder_class(input_size=input_size, **encoder_conf)
-            encoder_output_size = encoder.output_size()
+            audio_encoder = encoder_class(input_size=input_size, **encoder_conf)
+            audio_encoder_output_size = encoder.output_size()
+
+        freeze = encoder_conf.get("freeze", True)
+        if freeze:
+            for name, param in audio_encoder.named_parameters():
+                param.requires_grad = False
+            audio_encoder.eval()
+
+        self.audio_encoder = audio_encoder
+
 
         # llm
         hub = llm_conf.get("hub", "hf")
@@ -116,9 +121,9 @@ class LLMASRNAR(nn.Module):
 
         # adaptor
         adaptor_class = tables.adaptor_classes.get(adaptor)
-        adaptor = adaptor_class(**adaptor_conf)
+        audio_adaptor = adaptor_class(**adaptor_conf)
 
-        self.adaptor = adaptor
+        self.audio_adaptor = audio_adaptor
 
         self.blank_id = blank_id
         self.sos = sos if sos is not None else vocab_size - 1
@@ -127,7 +132,7 @@ class LLMASRNAR(nn.Module):
         self.ignore_id = ignore_id
         self.specaug = specaug
         self.normalize = normalize
-        self.encoder = encoder
+
 
         self.criterion_att = LabelSmoothingLoss(
             size=vocab_size,
@@ -177,7 +182,7 @@ class LLMASRNAR(nn.Module):
         encoder_out, encoder_out_lens = self.encode(speech, speech_lengths, audio_mask=audio_mask)
 
         # adaptor
-        encoder_out = self.adaptor(encoder_out)
+        encoder_out = self.audio_adaptor(encoder_out)
 
         if input_ids is not None:
             input_ids[input_ids == -1] = 0
@@ -190,17 +195,16 @@ class LLMASRNAR(nn.Module):
                 inputs_embeds = self.llm.model.model.model.embed_tokens(input_ids)
 
             if audio_mask is not None:
-                batch_size, token_num, dims = inputs_embeds.shape
-                _, l, _ = encoder_out.shape
-                encoder_outs_pad = F.pad(encoder_out, (0, 0, token_num - l - 1, 1, 0, 0), value=0.0)
-                inputs_embeds = encoder_outs_pad * audio_mask[:, :, None] + inputs_embeds * (
-                    1.0 - audio_mask[:, :, None]
-                )
+                batch_size, token_num, dims = inputs_embeds.shape # [b, 0*enc_len+prompt+label,dim]
+                _, l, _ = encoder_out.shape # [b, enc_len,dim]
+                encoder_outs_pad = F.pad(encoder_out, (0, 0, token_num - l - 1, 1, 0, 0), value=0.0) # [b, 0*(prompt_len+label_len-1)+enc_len+0,dim]
+                # audio_mask: [b, 1*enc_len+0*(prompt_len+label_len), 1]
+                inputs_embeds = encoder_outs_pad * audio_mask[:, :, None] + inputs_embeds * (1.0 - audio_mask[:, :, None])
+                # inputs_embeds [audio, prompt, label] [bs, seq_len, dim]
                 inputs_embeds = F.pad(inputs_embeds[:, 1:, :], (0, 0, 0, 1, 0, 0), value=0.0)
+                # (第一维左侧填充, 第一维右侧填充, 第二维左侧填充, 第二维右侧填充, ...)
 
-        model_outputs = self.llm(
-            inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels_ids
-        )
+        model_outputs = self.llm(inputs_embeds=inputs_embeds, attention_mask=attention_mask, labels=labels_ids)
         loss = model_outputs.loss
 
         stats = {}
@@ -234,7 +238,7 @@ class LLMASRNAR(nn.Module):
         enc, enc_lens = self.audio_encoder.encode(**batch)
         with autocast(False):
             enc_mask = sequence_mask(enc_lens, enc.size(1), device=enc.device)[:, None, :]
-            pre_acoustic_embeds, pre_token_length, _, _ = self.audio_encoder.predictor(
+            pre_acoustic_embeds, pre_token_length, *_ = self.audio_encoder.predictor(
                 enc,
                 mask=enc_mask,
                 target_label_length=audio_token_lengths,
@@ -302,7 +306,7 @@ class LLMASRNAR(nn.Module):
         )
 
         # adaptor
-        encoder_out = self.adaptor(encoder_out)
+        encoder_out = self.audio_adaptor(encoder_out)
 
         prompt_pre = "USER: \nINSTRUCTION: {}\nINPUT: ".format(prompt)
         prompt_ids = tokenizer.encode(prompt_pre)
@@ -463,9 +467,9 @@ class LLMASRNARPrompt(nn.Module):
 
         # adaptor
         adaptor_class = tables.adaptor_classes.get(adaptor)
-        adaptor = adaptor_class(**adaptor_conf)
+        audio_adaptor = adaptor_class(**adaptor_conf)
 
-        self.adaptor = adaptor
+        self.audio_adaptor = audio_adaptor
 
         self.blank_id = blank_id
         self.sos = sos if sos is not None else vocab_size - 1
@@ -545,7 +549,7 @@ class LLMASRNARPrompt(nn.Module):
             stats["loss_ctc"] = torch.clone(loss_ctc.detach()) if loss_ctc is not None else None
 
         # adaptor
-        encoder_out = self.adaptor(encoder_out)
+        encoder_out = self.audio_adaptor(encoder_out)
 
         if input_ids is not None:
             input_ids[input_ids == -1] = 0
@@ -712,7 +716,7 @@ class LLMASRNARPrompt(nn.Module):
         encoder_out = res[0]
 
         # adaptor
-        encoder_out = self.adaptor(encoder_out)
+        encoder_out = self.audio_adaptor(encoder_out)
 
         prompt_pre = "USER: \nINSTRUCTION: {}\nINPUT: ".format(prompt)
         prompt_ids = tokenizer.encode(prompt_pre)

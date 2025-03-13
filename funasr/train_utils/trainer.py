@@ -88,9 +88,7 @@ class Trainer:
         self.validate_interval = kwargs.get("validate_interval", -1)
         if self.validate_interval < 0:
             self.validate_interval = self.save_checkpoint_interval
-        assert (
-            self.save_checkpoint_interval == self.validate_interval
-        ), f"save_checkpoint_interval must equal to validate_interval"
+        assert (self.save_checkpoint_interval == self.validate_interval), f"save_checkpoint_interval must equal to validate_interval"
         self.keep_nbest_models = kwargs.get("keep_nbest_models", 500)
         self.avg_keep_nbest_models_type = kwargs.get("avg_keep_nbest_models_type", "acc")
         self.avg_nbest_model = kwargs.get("avg_nbest_model", 10)
@@ -105,12 +103,15 @@ class Trainer:
             rank = 0
             world_size = 1
             logging.warning("distributed is not initialized, only single shard")
+
         self.rank = rank
         self.world_size = world_size
         self.train_acc_avg = 0.0
         self.train_loss_avg = 0.0
         self.val_acc_avg = 0.0
         self.val_loss_avg = 0.0
+        self.dialect_flag = False  # 口音标记
+        self.val_acc_dal_avg = 0.0
         self.best_acc_idx = 0
         self.saved_ckpts = {}
         self.step_or_epoch = -1
@@ -201,46 +202,35 @@ class Trainer:
             if self.best_step_or_epoch == "":
                 self.best_step_or_epoch = ckpt_name
 
+            # 主要指标
             if self.avg_keep_nbest_models_type == "acc":
-                if (
-                    self.val_acc_step_or_epoch[ckpt_name]
-                    >= self.val_acc_step_or_epoch[self.best_step_or_epoch]
-                ):
+                if (self.val_acc_step_or_epoch[ckpt_name]>= self.val_acc_step_or_epoch[self.best_step_or_epoch]):
                     self.best_step_or_epoch = ckpt_name
                     best_ckpt = Path(os.path.join(self.output_dir, f"model.pt.best"))
                     torch.save(state, best_ckpt)
-                    logging.info(
-                        f"Update best acc: {self.val_acc_step_or_epoch[self.best_step_or_epoch]:.4f}, {best_ckpt}"
-                    )
+                    logging.info(f"Update best acc: {self.val_acc_step_or_epoch[self.best_step_or_epoch]:.4f}, {best_ckpt}")
                 else:
-                    logging.info(
-                        f"No improvement in acc: {self.val_acc_step_or_epoch[ckpt_name]:.4f} < {self.val_acc_step_or_epoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}"
-                    )
+                    logging.info(f"No improvement in acc: {self.val_acc_step_or_epoch[ckpt_name]:.4f} < {self.val_acc_step_or_epoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}")
+
             elif self.avg_keep_nbest_models_type == "loss":
-                if (
-                    self.val_loss_step_or_epoch[ckpt_name]
-                    <= self.val_loss_step_or_epoch[self.best_step_or_epoch]
-                ):
+                if (self.val_loss_step_or_epoch[ckpt_name] <= self.val_loss_step_or_epoch[self.best_step_or_epoch]):
                     self.best_step_or_epoch = ckpt_name
                     best_ckpt = Path(os.path.join(self.output_dir, f"model.pt.best"))
                     torch.save(state, best_ckpt)
-                    logging.info(
-                        f"Update best loss: {self.val_loss_step_or_epoch[self.best_step_or_epoch]:.4f}, {best_ckpt}"
-                    )
+                    logging.info( f"Update best loss: {self.val_loss_step_or_epoch[self.best_step_or_epoch]:.4f}, {best_ckpt}")
                 else:
-                    logging.info(
-                        f"No improvement in loss: {self.val_loss_step_or_epoch[ckpt_name]:.4f} > {self.val_loss_step_or_epoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}"
-                    )
+                    logging.info(f"No improvement in loss: {self.val_loss_step_or_epoch[ckpt_name]:.4f} > {self.val_loss_step_or_epoch[self.best_step_or_epoch]:.4f}, {os.path.join(self.output_dir, self.best_step_or_epoch)}")
+
             else:
                 print("Undo")
 
+            # 口音指标
             if self.dialect_flag:
                 logging.info(f"Current dialect acc: {self.val_acc_dal_avg:.4f}")
 
 
-            self.saved_ckpts[ckpt_name] = getattr(
-                self, f"val_{self.avg_keep_nbest_models_type}_step_or_epoch"
-            )[ckpt_name]
+            self.saved_ckpts[ckpt_name] = getattr(self, f"val_{self.avg_keep_nbest_models_type}_step_or_epoch")[ckpt_name]
+
             if self.keep_nbest_models > 0:
                 if len(self.saved_ckpts) > self.keep_nbest_models:
                     if self.avg_keep_nbest_models_type == "acc":
@@ -299,36 +289,18 @@ class Trainer:
                     scaler.load_state_dict(checkpoint["scaler_state"])
 
                 self.saved_ckpts = checkpoint["saved_ckpts"]
-                self.val_acc_step_or_epoch = (
-                    checkpoint["val_acc_step_or_epoch"]
-                    if "val_acc_step_or_epoch" in checkpoint
-                    else {}
-                )
-                self.val_loss_step_or_epoch = (
-                    checkpoint["val_loss_step_or_epoch"]
-                    if "val_loss_step_or_epoch" in checkpoint
-                    else {}
-                )
-                self.best_step_or_epoch = (
-                    checkpoint["best_step_or_epoch"] if "best_step_or_epoch" in checkpoint else ""
-                )
-                self.start_data_split_i = (
-                    checkpoint["data_split_i"] if "data_split_i" in checkpoint else 0
-                )
+                self.val_acc_step_or_epoch = (checkpoint["val_acc_step_or_epoch"] if "val_acc_step_or_epoch" in checkpoint else {})
+                self.val_loss_step_or_epoch = (checkpoint["val_loss_step_or_epoch"] if "val_loss_step_or_epoch" in checkpoint else {})
+                self.best_step_or_epoch = (checkpoint["best_step_or_epoch"] if "best_step_or_epoch" in checkpoint else "")
+                self.start_data_split_i = (checkpoint["data_split_i"] if "data_split_i" in checkpoint else 0)
                 self.batch_total = checkpoint["batch_total"] if "batch_total" in checkpoint else 0
                 self.start_step = checkpoint["step"] if "step" in checkpoint else 0
                 self.start_step = 0 if self.start_step is None else self.start_step
-                self.step_in_epoch = (
-                    checkpoint["step_in_epoch"] if "step_in_epoch" in checkpoint else 0
-                )
+                self.step_in_epoch = (checkpoint["step_in_epoch"] if "step_in_epoch" in checkpoint else 0)
                 self.step_in_epoch = 0 if self.step_in_epoch is None else self.step_in_epoch
                 print(checkpoint["train_acc_avg"])
-                self.train_acc_avg = (
-                    checkpoint["train_acc_avg"] if "train_acc_avg" in checkpoint else 0
-                )
-                self.train_loss_avg = (
-                    checkpoint["train_loss_avg"] if "train_loss_avg" in checkpoint else 0
-                )
+                self.train_acc_avg = (checkpoint["train_acc_avg"] if "train_acc_avg" in checkpoint else 0)
+                self.train_loss_avg = (checkpoint["train_loss_avg"] if "train_loss_avg" in checkpoint else 0)
                 model.to(self.device)
                 print(f"Checkpoint loaded successfully from '{ckpt}'")
             else:
@@ -424,15 +396,10 @@ class Trainer:
                 time4 = time.perf_counter()
                 speed_stats["backward_and_AllReaduce_time"] = f"{time4 - time3:0.3f}"
 
-                self.train_loss_avg = (
-                    self.train_loss_avg * (batch_idx + kwargs.get("start_step", 0))
-                    + loss.detach().cpu().item()
-                ) / (batch_idx + kwargs.get("start_step", 0) + 1)
+                self.train_loss_avg = (self.train_loss_avg * (batch_idx + kwargs.get("start_step", 0))+ loss.detach().cpu().item()) / (batch_idx + kwargs.get("start_step", 0) + 1)
+
                 if "acc" in stats:
-                    self.train_acc_avg = (
-                        self.train_acc_avg * (batch_idx + kwargs.get("start_step", 0))
-                        + stats["acc"].detach().cpu().item()
-                    ) / (batch_idx + kwargs.get("start_step", 0) + 1)
+                    self.train_acc_avg = (self.train_acc_avg * (batch_idx + kwargs.get("start_step", 0))+ stats["acc"].detach().cpu().item()) / (batch_idx + kwargs.get("start_step", 0) + 1)
 
             # Perform an optimizer step only after accumulating enough gradients
             if (batch_idx + 1) % accum_grad == 0:
@@ -444,9 +411,7 @@ class Trainer:
                         norm_type=self.grad_clip_type,
                     )
                     if not torch.isfinite(grad_norm):
-                        logging.warning(
-                            f"The grad norm is {grad_norm}. Skipping updating the model."
-                        )
+                        logging.warning(f"The grad norm is {grad_norm}. Skipping updating the model.")
                         optim.zero_grad()  # Reset gradients
                         continue
 
@@ -463,12 +428,8 @@ class Trainer:
                 optim.zero_grad(set_to_none=True)
 
                 if self.use_ddp or self.use_fsdp:
-                    train_loss_avg = torch.tensor(self.train_loss_avg, dtype=torch.float32).to(
-                        self.device
-                    )
-                    train_acc_avg = torch.tensor(self.train_acc_avg, dtype=torch.float32).to(
-                        self.device
-                    )
+                    train_loss_avg = torch.tensor(self.train_loss_avg, dtype=torch.float32).to(self.device)
+                    train_acc_avg = torch.tensor(self.train_acc_avg, dtype=torch.float32).to(self.device)
                     dist.all_reduce(train_loss_avg, op=dist.ReduceOp.SUM)
                     dist.all_reduce(train_acc_avg, op=dist.ReduceOp.SUM)
                     self.train_loss_avg = train_loss_avg.detach().cpu().item() / self.world_size
@@ -595,22 +556,13 @@ class Trainer:
                 loss = loss
                 time4 = time.perf_counter()
 
-                self.val_loss_avg = (self.val_loss_avg * batch_idx + loss.detach().cpu().item()) / (
-                    batch_idx + 1
-                )
+                self.val_loss_avg = (self.val_loss_avg * batch_idx + loss.detach().cpu().item()) / (batch_idx + 1)
                 if "acc" in stats:
-                    self.val_acc_avg = (
-                        self.val_acc_avg * batch_idx + stats["acc"].detach().cpu().item()
-                    ) / (batch_idx + 1)
+                    self.val_acc_avg = (self.val_acc_avg * batch_idx + stats["acc"].detach().cpu().item()) / (batch_idx + 1)
 
                 if "acc_dal" in stats and "eff_num" not in stats:
                     self.dialect_flag = True
-                    self.val_acc_dal_avg = (
-                        self.val_acc_dal_avg * batch_idx + stats["acc_dal"].detach().cpu().item()
-                    ) / (batch_idx + 1)
-
-                if "acc_dal" in stats and "eff_num" in stats:
-                    self.dialect_flag = True
+                    self.val_acc_dal_avg = (self.val_acc_dal_avg * batch_idx + stats["acc_dal"].detach().cpu().item()) / (batch_idx + 1)
 
                     # 获取当前批次的准确率和有效样本数量
                     current_acc_dal = stats["acc_dal"].detach().cpu().item()
@@ -629,24 +581,20 @@ class Trainer:
                     self.val_acc_dal_avg = self.val_acc_dal_sum / self.total_eff_num
 
                 if self.use_ddp or self.use_fsdp:
-                    val_loss_avg = torch.tensor(self.val_loss_avg, dtype=torch.float32).to(
-                        self.device
-                    )
-                    val_acc_avg = torch.tensor(self.val_acc_avg, dtype=torch.float32).to(
-                        self.device
-                    )
-                    val_acc_dal_avg = torch.tensor(self.val_acc_dal_avg, dtype=torch.float32).to(
-                        self.device
-                    )
+                    val_loss_avg = torch.tensor(self.val_loss_avg, dtype=torch.float32).to(self.device)
+                    val_acc_avg = torch.tensor(self.val_acc_avg, dtype=torch.float32).to(self.device)
+
+
                     dist.all_reduce(val_loss_avg, op=dist.ReduceOp.SUM)
                     dist.all_reduce(val_acc_avg, op=dist.ReduceOp.SUM)
-                    if self.dialect_flag:
-                        dist.all_reduce(val_acc_dal_avg, op=dist.ReduceOp.SUM)
-
                     self.val_loss_avg = val_loss_avg.detach().cpu().item() / self.world_size
                     self.val_acc_avg = val_acc_avg.detach().cpu().item() / self.world_size
+
                     if self.dialect_flag:
+                        val_acc_dal_avg = torch.tensor(self.val_acc_dal_avg, dtype=torch.float32).to(self.device)
+                        dist.all_reduce(val_acc_dal_avg, op=dist.ReduceOp.SUM)
                         self.val_acc_dal_avg = val_acc_dal_avg.detach().cpu().item() / self.world_size
+
                 time5 = time.perf_counter()
                 batch_num_epoch = 1
                 if hasattr(dataloader_val, "__len__"):

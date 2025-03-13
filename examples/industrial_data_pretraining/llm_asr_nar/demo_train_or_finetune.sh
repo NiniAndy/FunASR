@@ -15,15 +15,15 @@ gpu_num=$(echo $CUDA_VISIBLE_DEVICES | awk -F "," '{print NF}')
 #++data_type_list='["source", "target"]' \
 #++jsonl_file_out=/Users/zhifu/funasr1.0/test_local/audio_datasets.jsonl
 
-train_data=/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/train_960/audio_datasets.jsonl
-val_data=/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/dev/audio_datasets.jsonl
+train_data=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/train/audio_datasets.jsonl
+val_data=/ssd/zhuang/code/FunASR/examples/aishell/DATA/data/dev/audio_datasets.jsonl
 
 # exp output dir
-output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_linear_vicuna_ls960"
+output_dir="/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr_nar/exp/paraformer_large_linear_qwen2.5_1B"
 log_file="${output_dir}/log.txt"
 
 workspace=`pwd`
-config="whisper_vicuna_linear.yaml"
+config="paraformer_qwen_linear.yaml"
 
 init_param="${output_dir}/model.pt"
 
@@ -38,7 +38,7 @@ torchrun \
 --config-name "${config}" \
 ++train_data_set_list="${train_data}" \
 ++valid_data_set_list="${val_data}" \
-++dataset_conf.batch_size=2 \
+++dataset_conf.batch_size=16 \
 ++dataset_conf.num_workers=4 \
 ++optim_conf.lr=0.0001 \
 ++output_dir="${output_dir}" &> ${log_file} &

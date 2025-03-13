@@ -50,9 +50,7 @@ def prepare_data_iterator(data_in, input_len=None, data_type=None, key=None, oth
         if data_in.startswith("http://") or data_in.startswith("https://"):  # url
             data_in = download_from_url(data_in)
 
-    if isinstance(data_in, str) and os.path.exists(
-        data_in
-    ):  # wav_path; filelist: wav.scp, file.jsonl;text.txt;
+    if isinstance(data_in, str) and os.path.exists(data_in):  # wav_path; filelist: wav.scp, file.jsonl;text.txt;
         _, file_extension = os.path.splitext(data_in)
         file_extension = file_extension.lower()
         if file_extension in filelist:  # filelist: wav.scp, file.jsonl;text.txt;
@@ -239,9 +237,7 @@ class AutoModel:
                     tokenizer = tokenizer_class(**tokenizer_conf)
                     tokenizers_build.append(tokenizer)
                     token_list = tokenizer.token_list if hasattr(tokenizer, "token_list") else None
-                    token_list = (
-                        tokenizer.get_vocab() if hasattr(tokenizer, "get_vocab") else token_list
-                    )
+                    token_list = (tokenizer.get_vocab() if hasattr(tokenizer, "get_vocab") else token_list)
                     vocab_size = -1
                     if token_list is not None:
                         vocab_size = len(token_list)

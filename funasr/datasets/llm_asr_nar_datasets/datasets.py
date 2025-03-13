@@ -5,8 +5,8 @@ from funasr.register import tables
 from funasr.utils.load_utils import extract_fbank, load_audio_text_image_video
 
 
-@tables.register("dataset_classes", "AudioLLMQwenAudioDataset")
-class AudioLLMQwenAudioDataset(torch.utils.data.Dataset):
+@tables.register("dataset_classes", "LLMASRNARDataset")
+class LLMASRNARDataset(torch.utils.data.Dataset):
     """
     AudioLLMDataset
     """
@@ -27,9 +27,7 @@ class AudioLLMQwenAudioDataset(torch.utils.data.Dataset):
         preprocessor_speech = kwargs.get("preprocessor_speech", None)
         if preprocessor_speech:
             preprocessor_speech_class = tables.preprocessor_classes.get(preprocessor_speech)
-            preprocessor_speech = preprocessor_speech_class(
-                **kwargs.get("preprocessor_speech_conf", {})
-            )
+            preprocessor_speech = preprocessor_speech_class(**kwargs.get("preprocessor_speech_conf", {}))
         self.preprocessor_speech = preprocessor_speech
         preprocessor_text = kwargs.get("preprocessor_text", None)
         if preprocessor_text:
@@ -70,10 +68,9 @@ class AudioLLMQwenAudioDataset(torch.utils.data.Dataset):
         data_src = load_audio_text_image_video(source, fs=self.fs)
         if self.preprocessor_speech:
             data_src = self.preprocessor_speech(data_src, fs=self.fs)
-        speech, speech_lengths = extract_fbank(
-            data_src, data_type=self.data_type, frontend=self.frontend, is_final=True
-        )  # speech: [b, T, d]
+        speech, speech_lengths = extract_fbank(data_src, data_type=self.data_type, frontend=self.frontend, is_final=True)  # speech: [b, T, d]
         speech = speech.squeeze(0)
+
 
         audio_pseudo_length = (
             (speech.shape[0] + 1)

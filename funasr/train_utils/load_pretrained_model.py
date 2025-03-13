@@ -85,10 +85,7 @@ def load_pretrained_model(
                     if not k_src.startswith("module."):
                         if local_rank == 0:
                             logging.info(f"init param, map: {k} from {k_src} in ckpt")
-                elif (
-                    k.startswith(dst_prefix)
-                    and k.replace(dst_prefix, src_prefix, 1) in src_state.keys()
-                ):
+                elif (k.startswith(dst_prefix) and k.replace(dst_prefix, src_prefix, 1) in src_state.keys()):
                     k_src = k.replace(dst_prefix, src_prefix, 1)
                     if not k_src.startswith("module."):
                         if local_rank == 0:
@@ -97,9 +94,7 @@ def load_pretrained_model(
         if k_src in src_state.keys():
             if ignore_init_mismatch and dst_state[k].shape != src_state[k_src].shape:
                 if local_rank == 0:
-                    logging.info(
-                        f"ignore_init_mismatch:{ignore_init_mismatch}, dst: {k, dst_state[k].shape}, src: {k_src, src_state[k_src].shape}"
-                    )
+                    logging.info(f"ignore_init_mismatch:{ignore_init_mismatch}, dst: {k, dst_state[k].shape}, src: {k_src, src_state[k_src].shape}")
             else:
                 dst_state[k] = src_state[k_src]
 
