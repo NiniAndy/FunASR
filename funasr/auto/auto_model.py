@@ -207,9 +207,7 @@ class AutoModel:
             kwargs["vocab_size"] = -1
 
             if tokenizer is not None:
-                tokenizers = (
-                    tokenizer.split(",") if isinstance(tokenizer, str) else tokenizer
-                )  # type of tokenizers is list!!!
+                tokenizers = (tokenizer.split(",") if isinstance(tokenizer, str) else tokenizer)  # type of tokenizers is list!!!
                 tokenizers_conf = kwargs.get("tokenizer_conf", {})
                 tokenizers_build = []
                 vocab_sizes = []

@@ -1,7 +1,7 @@
-ref=/ssd/zhuang/code/FunASR/examples/librispeech/DATA/data/test_clean/text
-test_dir=/ssd/zhuang/code/FunASR/examples/industrial_data_pretraining/llm_asr/exp/llm_asr_whisper_linear_qwen_ls960_exp3/inference-model.pt.ep4/test_clean/1best_recog
-
+ref=/ssd/zhuang/code/SLAM-LLM/examples/asr_librispeech/exp/vicuna-7b-v1.5-librispeech-linear-steplrwarmupkeep1e-4-whisper-medium-20250315/asr_epoch_2_step_67423/decode_test_clean_beam4_gt
+test_dir=/ssd/zhuang/code/SLAM-LLM/examples/asr_librispeech/exp/vicuna-7b-v1.5-librispeech-linear-steplrwarmupkeep1e-4-whisper-medium-20250315/asr_epoch_2_step_67423/decode_test_clean_beam4_pred
+wer_dir=/ssd/zhuang/code/SLAM-LLM/examples/asr_librispeech/exp/vicuna-7b-v1.5-librispeech-linear-steplrwarmupkeep1e-4-whisper-medium-20250315/asr_epoch_2_step_67423/decode_test_clean_beam4_wer
 
 
 python tools/compute-wer-wenet-version.py --char=1 --v=1 \
-  $ref $test_dir/text > $test_dir/wer
+  $ref $test_dir > $wer_dir

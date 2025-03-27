@@ -74,7 +74,8 @@ class EncoderProjectorQFormer(nn.Module):
         B, T, C = x.size()
         encoder_out_feat, attention_mask = self.split_frames(x)
         query = self.query.expand(encoder_out_feat.shape[0], -1, -1)
-
+        # encoder_out_feat: (B * L, kernel[1], C)
+        # attention_mask: (B * L, kernel[1])
    
         query_output = self.qformer(
             query_embeds=query,

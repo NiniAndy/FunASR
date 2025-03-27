@@ -261,9 +261,7 @@ def main(**kwargs):
             )
 
         trainer.start_data_split_i = 0
-        trainer.validate_epoch(
-            model=model, dataloader_val=dataloader_val, epoch=epoch + 1, writer=writer
-        )
+        trainer.validate_epoch(model=model, dataloader_val=dataloader_val, epoch=epoch + 1, writer=writer)
         scheduler.step()
         trainer.step_in_epoch = 0
         trainer.save_checkpoint(

@@ -24,6 +24,7 @@ class RegisterTables:
     batch_sampler_classes = {}
     dataset_classes = {}
     index_ds_classes = {}
+    llm_classes = {}
 
     def print(self, key: str = None) -> None:
         """Print registered classes."""

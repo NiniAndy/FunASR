@@ -1,3 +1,4 @@
+
 import logging
 import torch
 
@@ -61,7 +62,6 @@ class DataloaderMapStyle:
                 tokenizer=tokenizer,
                 is_training=True,
                 **kwargs.get("dataset_conf"),
-                **kwargs,
             )
         dataset_val = dataset_class(
             kwargs.get("valid_data_set_list"),
@@ -69,7 +69,6 @@ class DataloaderMapStyle:
             tokenizer=tokenizer,
             is_training=False,
             **kwargs.get("dataset_conf"),
-            **kwargs,
         )
 
         self.dataset_tr = dataset_tr

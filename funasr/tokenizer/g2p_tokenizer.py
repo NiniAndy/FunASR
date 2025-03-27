@@ -1,7 +1,8 @@
 from typing import Dict, List, Tuple
 from funasr.tokenizer.g2p_tokenizer_utils import PhonemeBpeTokenizer
+from funasr.register import tables
 
-
+@tables.register("tokenizer_classes", "G2PTokenizer")
 class G2PTokenizer(object):
 
     def __init__(self, symbol_table_path, language: str = 'zh', *args, **kwargs) -> None:
@@ -9,6 +10,9 @@ class G2PTokenizer(object):
         self.language = language
         self.tokenizer = PhonemeBpeTokenizer(symbol_table_path)
         self._vocab = self.tokenizer.vocab
+        self.token2id = self._vocab
+        self.id2token ={v: k for k, v in self.token2id.items()}
+        self.token_list = list(self._vocab.keys())
         self._vocab_size = len(self._vocab)
 
     def tokenize(self, line: str) -> Tuple[List[str], List[int]]:
@@ -41,8 +45,10 @@ class G2PTokenizer(object):
 
 
 if __name__ == '__main__':
-    text = "你好"
-    language = 'zh'
+    # text = "你好"
+    # language = 'zh'
+    text = "hello"
+    language = 'en'
     tokenizer = G2PTokenizer("./g2p_tokenizer_utils/vocab.json", language)
     text, ids = tokenizer.tokenize(text)
     vocab_size = tokenizer.vocab_size()

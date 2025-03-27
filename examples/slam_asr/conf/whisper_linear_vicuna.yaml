@@ -1,0 +1,100 @@
+# This is an example that demonstrates how to configure a model file.
+# You can modify the configuration according to your own requirements.
+
+# to print the register_table:
+# from funasr.register import tables
+# tables.print()
+
+# network architecture
+model: SLAMASR
+
+
+# encoder
+encoder: WhisperWrappedEncoder
+encoder_conf:
+    encoder_path: "/ssd/zhuang/code/LLM/whisper/large-v3.pt"
+    freeze: true
+
+adaptor: Linear
+adaptor_conf:
+  downsample_rate: 5
+  llm_dim: 4096
+  encoder_dim: 1280
+
+llm: vicuna
+llm_conf:
+  init_param_path: "/ssd/zhuang/code/LLM/vicuna-7b-v.15/"
+  freeze: true
+
+
+# frontend related
+frontend: WhisperFrontend
+frontend_conf:
+    fs: 16000
+    whisper_model: large-v3
+    do_pad_trim: true
+    permute: true # true: [bs, frames, dims]; false: [bs, dims, frames]
+
+
+#specaug: SpecAugLFR
+#specaug_conf:
+#    apply_time_warp: false
+#    time_warp_window: 5
+#    time_warp_mode: bicubic
+#    apply_freq_mask: true
+#    freq_mask_width_range:
+#    - 0
+#    - 30
+#    lfr_rate: 6
+#    num_freq_mask: 1
+#    apply_time_mask: true
+#    time_mask_width_range:
+#    - 0
+#    - 12
+#    num_time_mask: 1
+
+
+train_conf:
+  accum_grad: 2
+  grad_clip: 5
+  max_epoch: 5
+  keep_nbest_models: 10
+  log_interval: 300
+
+optim: adamw
+optim_conf:
+   lr: 0.0001
+   weight_decay: 0.000000
+
+scheduler: custom_lambdalr
+scheduler_conf:
+#   warmup_steps: 3000
+    warmup_steps: 1500
+    total_steps: 150000
+
+
+dataset: SLAMASRDataset
+dataset_conf:
+    index_ds: IndexDSJsonl
+    batch_sampler: CustomDistributedBatchSampler
+    batch_type: example # example or length
+    batch_size: 2 # if batch_type is example, batch_size is the numbers of samples; if length, batch_size is source_token_len+target_token_len;
+    max_token_length: 3000 # filter samples if source_token_len+target_token_len > max_token_length,
+    shuffle: True
+    num_workers: 4
+    inference: false
+    input_type: mel
+    mel_size: 128   # 80 for whisper large v1 and v2, 128 for large v3
+    fix_length_audio: -1
+#    preprocessor_text: TextPreprocessRemovePunctuation  # only apply on CN dataset
+    audio_adaptor_downsample_rate: ${adaptor_conf.downsample_rate}
+    audio_encoder_downsample_rate: 2
+    prompt: "Transcribe speech to text. "
+
+
+
+tokenizer: HuggingfaceTokenizer
+tokenizer_conf:
+  unk_symbol: <unk>
+  init_param_path: ${llm_conf.init_param_path}
+

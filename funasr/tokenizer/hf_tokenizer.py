@@ -9,5 +9,5 @@ def HuggingfaceTokenizer(init_param_path, **kwargs):
         # print("If you want to use hugging, please `pip install -U transformers`")
         pass
     tokenizer = AutoTokenizer.from_pretrained(init_param_path)
-
+    tokenizer.pad_token_id = tokenizer.eos_token_id
     return tokenizer
